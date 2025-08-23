@@ -1,0 +1,329 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Admin User Management Test</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .container { max-width: 800px; margin: 0 auto; }
+        .section { margin: 20px 0; padding: 15px; border: 1px solid #ddd; border-radius: 5px; }
+        .success { background-color: #d4edda; border-color: #c3e6cb; color: #155724; }
+        .error { background-color: #f8d7da; border-color: #f5c6cb; color: #721c24; }
+        .info { background-color: #d1ecf1; border-color: #bee5eb; color: #0c5460; }
+        button { padding: 10px 15px; margin: 5px; border: none; border-radius: 3px; cursor: pointer; }
+        .btn-primary { background-color: #007bff; color: white; }
+        .btn-success { background-color: #28a745; color: white; }
+        .btn-warning { background-color: #ffc107; color: black; }
+        .btn-danger { background-color: #dc3545; color: white; }
+        input, select { padding: 8px; margin: 5px; border: 1px solid #ddd; border-radius: 3px; }
+        .form-group { margin: 10px 0; }
+        label { display: block; margin-bottom: 5px; font-weight: bold; }
+        .user-list { background-color: #f8f9fa; padding: 10px; border-radius: 5px; }
+        .user-item { padding: 8px; margin: 5px 0; background: white; border-radius: 3px; border-left: 4px solid #007bff; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🚀 Admin User Management - Feature Test</h1>
+        
+        <div class="section info">
+            <h3>📋 Test Status</h3>
+            <p><strong>Backend API:</strong> <span id="api-status">Testing...</span></p>
+            <p><strong>Authentication:</strong> <span id="auth-status">Testing...</span></p>
+            <p><strong>User Creation:</strong> <span id="creation-status">Ready</span></p>
+            <p><strong>Password Reset:</strong> <span id="reset-status">Ready</span></p>
+        </div>
+
+        <div class="section">
+            <h3>🔐 Admin Login</h3>
+            <div class="form-group">
+                <label>Email:</label>
+                <input type="email" id="email" value="admin@quizora.com" style="width: 250px;">
+            </div>
+            <div class="form-group">
+                <label>Password:</label>
+                <input type="password" id="password" value="Admin123!" style="width: 250px;">
+            </div>
+            <button class="btn-primary" onclick="testLogin()">🔑 Login as Admin</button>
+            <div id="login-result"></div>
+        </div>
+
+        <div class="section">
+            <h3>👥 Create New User</h3>
+            <div class="form-group">
+                <label>Name:</label>
+                <input type="text" id="new-name" placeholder="Enter full name" style="width: 250px;">
+            </div>
+            <div class="form-group">
+                <label>Email:</label>
+                <input type="email" id="new-email" placeholder="Enter email" style="width: 250px;">
+            </div>
+            <div class="form-group">
+                <label>Password:</label>
+                <input type="password" id="new-password" placeholder="Enter password" style="width: 250px;">
+            </div>
+            <div class="form-group">
+                <label>Role:</label>
+                <select id="new-role" onchange="toggleRoleFields()">
+                    <option value="student">Student</option>
+                    <option value="teacher">Teacher</option>
+                    <option value="admin">Admin</option>
+                </select>
+            </div>
+            
+            <!-- Student fields -->
+            <div id="student-fields" class="form-group">
+                <label>Student ID:</label>
+                <input type="text" id="student-id" placeholder="e.g., ST2024001" style="width: 150px;">
+                <label>Course:</label>
+                <input type="text" id="course" placeholder="e.g., Computer Science" style="width: 200px;">
+                <label>Enrollment Year:</label>
+                <input type="number" id="enrollment-year" value="2024" min="2000" max="2030" style="width: 100px;">
+            </div>
+            
+            <!-- Teacher fields -->
+            <div id="teacher-fields" class="form-group" style="display: none;">
+                <label>Employee ID:</label>
+                <input type="text" id="employee-id" placeholder="e.g., EMP001" style="width: 150px;">
+                <label>Department:</label>
+                <input type="text" id="department" placeholder="e.g., Computer Science" style="width: 200px;">
+                <label>Subjects (comma-separated):</label>
+                <input type="text" id="subjects" placeholder="e.g., Math, Physics" style="width: 300px;">
+            </div>
+            
+            <button class="btn-success" onclick="createUser()">➕ Create User</button>
+            <div id="create-result"></div>
+        </div>
+
+        <div class="section">
+            <h3>📊 Current Users</h3>
+            <button class="btn-primary" onclick="fetchUsers()">🔄 Refresh User List</button>
+            <div id="users-list" class="user-list">
+                <p>Click "Refresh User List" to load users...</p>
+            </div>
+        </div>
+
+        <div class="section">
+            <h3>🔑 Password Reset Test</h3>
+            <div class="form-group">
+                <label>Select User:</label>
+                <select id="reset-user" style="width: 300px;">
+                    <option value="">Select a user to reset password...</option>
+                </select>
+            </div>
+            <button class="btn-warning" onclick="resetPassword()">🔄 Reset Password</button>
+            <div id="reset-result"></div>
+        </div>
+    </div>
+
+    <script>
+        const API_BASE = 'http://localhost:5000/api';
+        let authToken = '';
+        let currentUsers = [];
+
+        // Test API connectivity
+        fetch(`${API_BASE}/health`)
+            .then(r => r.json())
+            .then(d => {
+                document.getElementById('api-status').innerHTML = '✅ Connected';
+                document.getElementById('api-status').style.color = 'green';
+            })
+            .catch(e => {
+                document.getElementById('api-status').innerHTML = '❌ Failed';
+                document.getElementById('api-status').style.color = 'red';
+            });
+
+        function toggleRoleFields() {
+            const role = document.getElementById('new-role').value;
+            document.getElementById('student-fields').style.display = role === 'student' ? 'block' : 'none';
+            document.getElementById('teacher-fields').style.display = role === 'teacher' ? 'block' : 'none';
+        }
+
+        async function testLogin() {
+            const email = document.getElementById('email').value;
+            const password = document.getElementById('password').value;
+            
+            try {
+                const response = await fetch(`${API_BASE}/auth/login`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ email, password })
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    authToken = data.data.accessToken;
+                    document.getElementById('login-result').innerHTML = 
+                        `<div class="success">✅ Login successful! User: ${data.data.user.name} (${data.data.user.role})</div>`;
+                    document.getElementById('auth-status').innerHTML = '✅ Authenticated';
+                    document.getElementById('auth-status').style.color = 'green';
+                    fetchUsers(); // Auto-load users after login
+                } else {
+                    document.getElementById('login-result').innerHTML = 
+                        `<div class="error">❌ Login failed: ${data.message}</div>`;
+                }
+            } catch (error) {
+                document.getElementById('login-result').innerHTML = 
+                    `<div class="error">❌ Error: ${error.message}</div>`;
+            }
+        }
+
+        async function createUser() {
+            if (!authToken) {
+                alert('Please login first!');
+                return;
+            }
+
+            const role = document.getElementById('new-role').value;
+            const userData = {
+                name: document.getElementById('new-name').value,
+                email: document.getElementById('new-email').value,
+                password: document.getElementById('new-password').value,
+                role: role
+            };
+
+            // Add role-specific fields
+            if (role === 'student') {
+                userData.studentId = document.getElementById('student-id').value;
+                userData.course = document.getElementById('course').value;
+                userData.enrollmentYear = parseInt(document.getElementById('enrollment-year').value);
+            } else if (role === 'teacher') {
+                userData.employeeId = document.getElementById('employee-id').value;
+                userData.department = document.getElementById('department').value;
+                userData.subjects = document.getElementById('subjects').value.split(',').map(s => s.trim());
+            }
+
+            try {
+                const response = await fetch(`${API_BASE}/admin/users`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${authToken}`
+                    },
+                    body: JSON.stringify(userData)
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    document.getElementById('create-result').innerHTML = 
+                        `<div class="success">✅ User "${userData.name}" created successfully!</div>`;
+                    document.getElementById('creation-status').innerHTML = '✅ Working';
+                    document.getElementById('creation-status').style.color = 'green';
+                    
+                    // Clear form
+                    document.getElementById('new-name').value = '';
+                    document.getElementById('new-email').value = '';
+                    document.getElementById('new-password').value = '';
+                    document.getElementById('student-id').value = '';
+                    document.getElementById('course').value = '';
+                    document.getElementById('employee-id').value = '';
+                    document.getElementById('department').value = '';
+                    document.getElementById('subjects').value = '';
+                    
+                    fetchUsers(); // Refresh list
+                } else {
+                    document.getElementById('create-result').innerHTML = 
+                        `<div class="error">❌ Failed to create user: ${data.message}</div>`;
+                }
+            } catch (error) {
+                document.getElementById('create-result').innerHTML = 
+                    `<div class="error">❌ Error: ${error.message}</div>`;
+            }
+        }
+
+        async function fetchUsers() {
+            if (!authToken) {
+                document.getElementById('users-list').innerHTML = '<p>Please login first!</p>';
+                return;
+            }
+
+            try {
+                const response = await fetch(`${API_BASE}/admin/users`, {
+                    headers: { 'Authorization': `Bearer ${authToken}` }
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    currentUsers = data.data.users || data.data;
+                    let html = `<h4>📋 ${currentUsers.length} Users Found:</h4>`;
+                    
+                    currentUsers.forEach(user => {
+                        const roleColor = user.role === 'admin' ? '#dc3545' : 
+                                        user.role === 'teacher' ? '#6f42c1' : '#007bff';
+                        html += `
+                            <div class="user-item" style="border-left-color: ${roleColor}">
+                                <strong>${user.name}</strong> (${user.email})
+                                <br>Role: ${user.role} | Status: ${user.status}
+                                ${user.studentId ? `<br>Student ID: ${user.studentId}` : ''}
+                                ${user.employeeId ? `<br>Employee ID: ${user.employeeId}` : ''}
+                                ${user.department ? `<br>Department: ${user.department}` : ''}
+                            </div>
+                        `;
+                    });
+                    
+                    document.getElementById('users-list').innerHTML = html;
+                    
+                    // Update reset dropdown
+                    const resetSelect = document.getElementById('reset-user');
+                    resetSelect.innerHTML = '<option value="">Select a user to reset password...</option>';
+                    currentUsers.filter(u => u.role !== 'admin').forEach(user => {
+                        resetSelect.innerHTML += `<option value="${user._id}">${user.name} (${user.email})</option>`;
+                    });
+                    
+                } else {
+                    document.getElementById('users-list').innerHTML = 
+                        `<div class="error">❌ Failed to fetch users: ${data.message}</div>`;
+                }
+            } catch (error) {
+                document.getElementById('users-list').innerHTML = 
+                    `<div class="error">❌ Error: ${error.message}</div>`;
+            }
+        }
+
+        async function resetPassword() {
+            const userId = document.getElementById('reset-user').value;
+            if (!userId) {
+                alert('Please select a user first!');
+                return;
+            }
+
+            if (!authToken) {
+                alert('Please login first!');
+                return;
+            }
+
+            try {
+                const response = await fetch(`${API_BASE}/admin/users/${userId}/reset-password`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${authToken}`
+                    },
+                    body: JSON.stringify({})
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    const tempPassword = data.data.temporaryPassword;
+                    document.getElementById('reset-result').innerHTML = 
+                        `<div class="success">✅ Password reset successful!${tempPassword ? `<br><strong>Temporary Password:</strong> ${tempPassword}` : ''}</div>`;
+                    document.getElementById('reset-status').innerHTML = '✅ Working';
+                    document.getElementById('reset-status').style.color = 'green';
+                } else {
+                    document.getElementById('reset-result').innerHTML = 
+                        `<div class="error">❌ Failed to reset password: ${data.message}</div>`;
+                }
+            } catch (error) {
+                document.getElementById('reset-result').innerHTML = 
+                    `<div class="error">❌ Error: ${error.message}</div>`;
+            }
+        }
+
+        // Initialize
+        toggleRoleFields();
+    </script>
+</body>
+</html>

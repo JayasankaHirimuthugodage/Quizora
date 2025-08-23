@@ -1,11 +1,16 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
+import PasswordResetModal from './PasswordResetModal';
 
 const AdminUserManagement = () => {
   const { user } = useAuth();
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [resetModalOpen, setResetModalOpen] = useState(false);
+  const [selectedUser, setSelectedUser] = useState(null);
+  const [resetLoading, setResetLoading] = useState(false);
+  const [successMessage, setSuccessMessage] = useState('');
 
   // API configuration
   const API_BASE = import.meta.env.VITE_API_URL;

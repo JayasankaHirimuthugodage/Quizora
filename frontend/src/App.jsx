@@ -3,7 +3,7 @@ import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import { AuthProvider } from './context/AuthContext';
 import Layout from './components/Layout/Layout';
 import ProtectedRoute, { PublicRoute } from './components/ProtectedRoute';
-import AdminUserManagement from './components/admin/AdminUserManagement_fixed';
+import AdminUserManagement from './components/admin/AdminUserManagement_updated';
 import { 
   HomePage, 
   LoginPage, 

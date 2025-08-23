@@ -320,7 +320,13 @@ export class UserService {
 
       return {
         success: true,
-        tempPassword: password // Return for admin to share with user if email fails
+        temporaryPassword: newPassword ? null : password, // Only return if we generated it
+        user: {
+          id: user._id,
+          name: user.name,
+          email: user.email,
+          role: user.role
+        }
       };
 
     } catch (error) {

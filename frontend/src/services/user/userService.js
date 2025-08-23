@@ -149,6 +149,27 @@ export class AdminService {
   }
 
   /**
+   * Update user (Admin only)
+   * @param {string} userId - User ID
+   * @param {Object} userData - User data to update
+   * @returns {Promise} Update response
+   */
+  static async updateUser(userId, userData) {
+    const endpoint = `/api/admin/users/${userId}`;
+    return apiService.put(endpoint, userData);
+  }
+
+  /**
+   * Delete user (Admin only)
+   * @param {string} userId - User ID
+   * @returns {Promise} Delete response
+   */
+  static async deleteUser(userId) {
+    const endpoint = `/api/admin/users/${userId}`;
+    return apiService.delete(endpoint);
+  }
+
+  /**
    * Bulk create users
    * @param {Array} users - Array of user data
    * @returns {Promise} Bulk creation response

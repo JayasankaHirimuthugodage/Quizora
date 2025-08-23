@@ -238,6 +238,153 @@ export class AdminController {
   });
 
   /**
+   * Reset user password (Admin only)
+   * @route POST /api/admin/users/:id/reset-password
+   * @access Private (Admin only)
+   */
+  static resetUserPassword = asyncHandler(async (req, res) => {
+    const { id } = req.params;
+    const { newPassword } = req.body;
+
+    const user = await User.findById(id);
+    if (!user) {
+      const response = errorResponse(MESSAGES.USER_NOT_FOUND, HTTP_STATUS.NOT_FOUND);
+      return sendResponse(res, response);
+    }
+
+    // Prevent admin from resetting their own password through this endpoint
+    if (user._id.toString() === req.user._id.toString()) {
+      const response = errorResponse('Cannot reset your own password through this endpoint. Use change password instead.', HTTP_STATUS.BAD_REQUEST);
+      return sendResponse(res, response);
+    }
+
+    // Import UserService dynamically to avoid circular dependency
+    const { UserService } = await import('../services/index.js');
+    
+    const result = await UserService.resetUserPassword(id, newPassword, req.user);
+
+    const response = successResponse({
+      message: 'Password reset successfully',
+      temporaryPassword: result.temporaryPassword || null
+    }, 'User password has been reset successfully');
+
+    sendResponse(res, response);
+  });
+
+  /**
+   * Update user details (Admin only)
+   * @route PUT /api/admin/users/:id
+   * @access Private (Admin only)
+   */
+  static updateUser = asyncHandler(async (req, res) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      const response = errorResponse('Validation failed', HTTP_STATUS.BAD_REQUEST, errors.array());
+      return sendResponse(res, response);
+    }
+
+    const { id } = req.params;
+    const updateData = req.body;
+
+    // Validate user exists
+    const user = await User.findById(id);
+    if (!user) {
+      const response = errorResponse(MESSAGES.USER_NOT_FOUND, HTTP_STATUS.NOT_FOUND);
+      return sendResponse(res, response);
+    }
+
+    // Prevent updating another admin's details
+    if (user.role === USER_ROLES.ADMIN && req.user._id.toString() !== id) {
+      const response = errorResponse('Cannot modify admin accounts', HTTP_STATUS.FORBIDDEN);
+      return sendResponse(res, response);
+    }
+
+    // If email is being changed, check if it's already taken
+    if (updateData.email && updateData.email !== user.email) {
+      const emailExists = await User.findOne({ 
+        email: updateData.email.toLowerCase(),
+        _id: { $ne: id }
+      });
+      
+      if (emailExists) {
+        const response = errorResponse('Email already exists', HTTP_STATUS.BAD_REQUEST);
+        return sendResponse(res, response);
+      }
+    }
+
+    // Clean the update data
+    const cleanedData = { ...updateData };
+    
+    // Remove password field if present (use separate endpoint for password changes)
+    delete cleanedData.password;
+    
+    // Handle email normalization
+    if (cleanedData.email) {
+      cleanedData.email = cleanedData.email.toLowerCase();
+    }
+
+    // Remove undefined fields
+    Object.keys(cleanedData).forEach(key => {
+      if (cleanedData[key] === undefined) {
+        delete cleanedData[key];
+      }
+    });
+
+    // Update the user
+    const updatedUser = await User.findByIdAndUpdate(
+      id,
+      cleanedData,
+      { 
+        new: true, 
+        runValidators: true,
+        select: '-password' // Exclude password from response
+      }
+    );
+
+    const response = successResponse({
+      user: updatedUser
+    }, 'User updated successfully');
+
+    sendResponse(res, response);
+  });
+
+  /**
+   * Delete user (Admin only)
+   * @route DELETE /api/admin/users/:id
+   * @access Private (Admin only)
+   */
+  static deleteUser = asyncHandler(async (req, res) => {
+    const { id } = req.params;
+
+    // Validate user exists
+    const user = await User.findById(id);
+    if (!user) {
+      const response = errorResponse(MESSAGES.USER_NOT_FOUND, HTTP_STATUS.NOT_FOUND);
+      return sendResponse(res, response);
+    }
+
+    // Prevent deleting admin accounts
+    if (user.role === USER_ROLES.ADMIN) {
+      const response = errorResponse('Cannot delete admin accounts', HTTP_STATUS.FORBIDDEN);
+      return sendResponse(res, response);
+    }
+
+    // Prevent self-deletion
+    if (req.user._id.toString() === id) {
+      const response = errorResponse('Cannot delete your own account', HTTP_STATUS.FORBIDDEN);
+      return sendResponse(res, response);
+    }
+
+    await User.findByIdAndDelete(id);
+
+    const response = successResponse({
+      deletedUserId: id
+    }, 'User deleted successfully');
+
+    sendResponse(res, response);
+  });
+
+  /**
    * Get user statistics
    * @route GET /api/admin/users/stats
    * @access Private (Admin only)
@@ -289,4 +436,99 @@ export const validateCreateUser = [
   body('role')
     .isIn(Object.values(USER_ROLES))
     .withMessage('Invalid role')
+];
+
+/**
+ * Validation middleware for password reset
+ */
+export const validatePasswordReset = [
+  body('newPassword')
+    .optional()
+    .isLength({ min: 6 })
+    .withMessage('Password must be at least 6 characters long')
+    .matches(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/)
+    .withMessage('Password must contain at least one lowercase letter, one uppercase letter, and one number')
+];
+
+/**
+ * Validation middleware for user update
+ */
+export const validateUpdateUser = [
+  body('name')
+    .optional()
+    .trim()
+    .isLength({ min: 2, max: 50 })
+    .withMessage('Name must be between 2 and 50 characters'),
+  
+  body('email')
+    .optional()
+    .isEmail()
+    .normalizeEmail()
+    .withMessage('Please provide a valid email'),
+  
+  body('role')
+    .optional()
+    .isIn(Object.values(USER_ROLES))
+    .withMessage('Invalid role'),
+
+  body('status')
+    .optional()
+    .isIn(Object.values(USER_STATUS))
+    .withMessage('Invalid status'),
+
+  body('studentId')
+    .optional()
+    .trim()
+    .isLength({ min: 1 })
+    .withMessage('Student ID cannot be empty'),
+
+  body('enrollmentYear')
+    .optional()
+    .isInt({ min: 2000, max: new Date().getFullYear() + 4 })
+    .withMessage('Invalid enrollment year'),
+
+  body('course')
+    .optional()
+    .trim()
+    .isLength({ min: 1 })
+    .withMessage('Course cannot be empty'),
+
+  body('employeeId')
+    .optional()
+    .trim()
+    .isLength({ min: 1 })
+    .withMessage('Employee ID cannot be empty'),
+
+  body('department')
+    .optional()
+    .trim()
+    .isLength({ min: 1 })
+    .withMessage('Department cannot be empty'),
+
+  body('subjects')
+    .optional()
+    .custom((value) => {
+      if (Array.isArray(value)) {
+        return value.length > 0;
+      }
+      return typeof value === 'string' && value.trim().length > 0;
+    })
+    .withMessage('At least one subject is required'),
+
+  body('phoneNumber')
+    .optional()
+    .trim()
+    .isMobilePhone()
+    .withMessage('Invalid phone number'),
+
+  body('address')
+    .optional()
+    .trim()
+    .isLength({ max: 200 })
+    .withMessage('Address cannot exceed 200 characters'),
+
+  body('dateOfBirth')
+    .optional()
+    .isISO8601()
+    .withMessage('Invalid date format')
 ];
