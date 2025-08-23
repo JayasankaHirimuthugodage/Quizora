@@ -12,12 +12,10 @@ const AddUserModal = ({
     email: '',
     password: '',
     role: 'student',
-    // Student fields
-    studentId: '',
+    // Student fields (studentId will be auto-generated)
     enrollmentYear: new Date().getFullYear(),
     course: '',
-    // Teacher fields
-    employeeId: '',
+    // Teacher fields (employeeId will be auto-generated)
     department: '',
     subjects: '',
     // Optional fields
@@ -62,9 +60,6 @@ const AddUserModal = ({
     const newErrors = {};
     
     if (formData.role === 'student') {
-      if (!formData.studentId.trim()) {
-        newErrors.studentId = 'Student ID is required';
-      }
       if (!formData.course.trim()) {
         newErrors.course = 'Course is required';
       }
@@ -74,9 +69,6 @@ const AddUserModal = ({
     }
 
     if (formData.role === 'teacher') {
-      if (!formData.employeeId.trim()) {
-        newErrors.employeeId = 'Employee ID is required';
-      }
       if (!formData.department.trim()) {
         newErrors.department = 'Department is required';
       }
@@ -139,11 +131,9 @@ const AddUserModal = ({
 
     // Add role-specific fields
     if (formData.role === 'student') {
-      submitData.studentId = formData.studentId.trim();
       submitData.enrollmentYear = parseInt(formData.enrollmentYear);
       submitData.course = formData.course.trim();
     } else if (formData.role === 'teacher') {
-      submitData.employeeId = formData.employeeId.trim();
       submitData.department = formData.department.trim();
       submitData.subjects = formData.subjects.split(',').map(s => s.trim()).filter(s => s);
     }
@@ -157,10 +147,8 @@ const AddUserModal = ({
       email: '',
       password: '',
       role: 'student',
-      studentId: '',
       enrollmentYear: new Date().getFullYear(),
       course: '',
-      employeeId: '',
       department: '',
       subjects: '',
       phoneNumber: '',
@@ -174,7 +162,7 @@ const AddUserModal = ({
   };
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+    <div className="fixed inset-0 backdrop-blur-sm bg-black/20 flex items-center justify-center z-50">
       <div className="bg-white rounded-lg shadow-xl max-w-md w-full mx-4 max-h-[90vh] overflow-y-auto">
         {/* Header */}
         <div className="flex items-center justify-between p-6 border-b">
@@ -321,21 +309,10 @@ const AddUserModal = ({
               {/* Student-specific fields */}
               {formData.role === 'student' && (
                 <>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Student ID *
-                    </label>
-                    <input
-                      type="text"
-                      name="studentId"
-                      value={formData.studentId}
-                      onChange={handleInputChange}
-                      className={`w-full px-3 py-2 border rounded-md ${
-                        errors.studentId ? 'border-red-500' : 'border-gray-300'
-                      }`}
-                      placeholder="e.g., ST2024001"
-                    />
-                    {errors.studentId && <p className="text-red-500 text-sm mt-1">{errors.studentId}</p>}
+                  <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-4">
+                    <p className="text-sm text-blue-800">
+                      <strong>Student ID:</strong> Will be auto-generated in format ST{formData.enrollmentYear}### (e.g., ST{formData.enrollmentYear}001)
+                    </p>
                   </div>
 
                   <div>
@@ -379,21 +356,10 @@ const AddUserModal = ({
               {/* Teacher-specific fields */}
               {formData.role === 'teacher' && (
                 <>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Employee ID *
-                    </label>
-                    <input
-                      type="text"
-                      name="employeeId"
-                      value={formData.employeeId}
-                      onChange={handleInputChange}
-                      className={`w-full px-3 py-2 border rounded-md ${
-                        errors.employeeId ? 'border-red-500' : 'border-gray-300'
-                      }`}
-                      placeholder="e.g., EMP001"
-                    />
-                    {errors.employeeId && <p className="text-red-500 text-sm mt-1">{errors.employeeId}</p>}
+                  <div className="bg-green-50 border border-green-200 rounded-lg p-3 mb-4">
+                    <p className="text-sm text-green-800">
+                      <strong>Employee ID:</strong> Will be auto-generated in format EMP### (e.g., EMP001)
+                    </p>
                   </div>
 
                   <div>

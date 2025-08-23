@@ -265,7 +265,7 @@ const Header = () => {
       {/* Backdrop for mobile menu */}
       {(isMenuOpen || isUserMenuOpen) && (
         <div 
-          className="fixed inset-0 bg-black bg-opacity-25 z-40"
+          className="fixed inset-0 bg-transparent z-40"
           onClick={closeMenus}
         ></div>
       )}

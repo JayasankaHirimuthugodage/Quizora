@@ -75,9 +75,6 @@ const EditUserModal = ({
     const newErrors = {};
     
     if (formData.role === 'student') {
-      if (!formData.studentId.trim()) {
-        newErrors.studentId = 'Student ID is required';
-      }
       if (!formData.course.trim()) {
         newErrors.course = 'Course is required';
       }
@@ -87,9 +84,6 @@ const EditUserModal = ({
     }
 
     if (formData.role === 'teacher') {
-      if (!formData.employeeId.trim()) {
-        newErrors.employeeId = 'Employee ID is required';
-      }
       if (!formData.department.trim()) {
         newErrors.department = 'Department is required';
       }
@@ -150,29 +144,23 @@ const EditUserModal = ({
       dateOfBirth: formData.dateOfBirth || undefined
     };
 
-    // Add role-specific fields
+    // Add role-specific fields (excluding IDs since they're auto-generated and read-only)
     if (formData.role === 'student') {
-      submitData.studentId = formData.studentId.trim();
       submitData.enrollmentYear = parseInt(formData.enrollmentYear);
       submitData.course = formData.course.trim();
       // Clear teacher fields
-      submitData.employeeId = undefined;
       submitData.department = undefined;
       submitData.subjects = undefined;
     } else if (formData.role === 'teacher') {
-      submitData.employeeId = formData.employeeId.trim();
       submitData.department = formData.department.trim();
       submitData.subjects = formData.subjects.split(',').map(s => s.trim()).filter(s => s);
       // Clear student fields
-      submitData.studentId = undefined;
       submitData.enrollmentYear = undefined;
       submitData.course = undefined;
     } else {
       // Admin role - clear both student and teacher fields
-      submitData.studentId = undefined;
       submitData.enrollmentYear = undefined;
       submitData.course = undefined;
-      submitData.employeeId = undefined;
       submitData.department = undefined;
       submitData.subjects = undefined;
     }
@@ -187,7 +175,7 @@ const EditUserModal = ({
   };
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+    <div className="fixed inset-0 backdrop-blur-sm bg-black/20 flex items-center justify-center z-50">
       <div className="bg-white rounded-lg shadow-xl max-w-md w-full mx-4 max-h-[90vh] overflow-y-auto">
         {/* Header */}
         <div className="flex items-center justify-between p-6 border-b">
@@ -215,8 +203,29 @@ const EditUserModal = ({
         <div className="px-6 py-2">
           <div className="bg-gray-50 rounded-lg p-3">
             <h4 className="font-medium text-gray-900 text-sm">Editing User</h4>
-            <p className="text-xs text-gray-600">ID: {user._id}</p>
-            <p className="text-xs text-gray-600">Current Role: {user.role}</p>
+            <div className="mt-2 space-y-1">
+              <p className="text-xs text-gray-600">Database ID: {user._id}</p>
+              <p className="text-xs text-gray-600">Current Role: {user.role}</p>
+              {(user.studentId || user.employeeId) && (
+                <div className="flex items-center space-x-2">
+                  <span className={`inline-flex items-center px-2 py-1 rounded text-xs font-medium ${
+                    user.studentId ? 'bg-blue-100 text-blue-800' : 'bg-green-100 text-green-800'
+                  }`}>
+                    {user.studentId && `Student ID: ${user.studentId}`}
+                    {user.employeeId && `Employee ID: ${user.employeeId}`}
+                  </span>
+                  <button
+                    onClick={() => navigator.clipboard.writeText(user.studentId || user.employeeId)}
+                    className="text-gray-400 hover:text-gray-600"
+                    title="Copy ID"
+                  >
+                    <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                    </svg>
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
         </div>
 
@@ -331,23 +340,6 @@ const EditUserModal = ({
                 <>
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Student ID *
-                    </label>
-                    <input
-                      type="text"
-                      name="studentId"
-                      value={formData.studentId}
-                      onChange={handleInputChange}
-                      className={`w-full px-3 py-2 border rounded-md ${
-                        errors.studentId ? 'border-red-500' : 'border-gray-300'
-                      }`}
-                      placeholder="e.g., ST2024001"
-                    />
-                    {errors.studentId && <p className="text-red-500 text-sm mt-1">{errors.studentId}</p>}
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
                       <GraduationCap size={16} className="inline mr-1" />
                       Course *
                     </label>
@@ -387,23 +379,6 @@ const EditUserModal = ({
               {/* Teacher-specific fields */}
               {formData.role === 'teacher' && (
                 <>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Employee ID *
-                    </label>
-                    <input
-                      type="text"
-                      name="employeeId"
-                      value={formData.employeeId}
-                      onChange={handleInputChange}
-                      className={`w-full px-3 py-2 border rounded-md ${
-                        errors.employeeId ? 'border-red-500' : 'border-gray-300'
-                      }`}
-                      placeholder="e.g., EMP001"
-                    />
-                    {errors.employeeId && <p className="text-red-500 text-sm mt-1">{errors.employeeId}</p>}
-                  </div>
-
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-2">
                       <Briefcase size={16} className="inline mr-1" />

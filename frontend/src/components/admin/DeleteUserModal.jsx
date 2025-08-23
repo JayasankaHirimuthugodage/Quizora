@@ -15,7 +15,7 @@ const DeleteUserModal = ({
   };
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+    <div className="fixed inset-0 backdrop-blur-sm bg-black/20 flex items-center justify-center z-50">
       <div className="bg-white rounded-lg shadow-xl max-w-md w-full mx-4">
         {/* Header */}
         <div className="flex items-center justify-between p-6 border-b">
@@ -43,7 +43,7 @@ const DeleteUserModal = ({
 
           {/* User Info */}
           <div className="bg-gray-50 rounded-lg p-4 mb-6">
-            <div className="flex items-center mb-2">
+            <div className="flex items-center mb-3">
               <strong className="text-gray-900">{user.name}</strong>
               <span className={`ml-2 px-2 py-1 text-xs rounded-full ${
                 user.role === 'admin' ? 'bg-purple-100 text-purple-800' :
@@ -53,22 +53,34 @@ const DeleteUserModal = ({
                 {user.role}
               </span>
             </div>
+            
+            {/* ID Display with Badge */}
+            {(user.studentId || user.employeeId) && (
+              <div className="flex items-center space-x-2 mb-3">
+                <span className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-medium ${
+                  user.studentId ? 'bg-blue-100 text-blue-800' : 'bg-green-100 text-green-800'
+                }`}>
+                  {user.studentId && `Student ID: ${user.studentId}`}
+                  {user.employeeId && `Employee ID: ${user.employeeId}`}
+                </span>
+                <button
+                  onClick={() => navigator.clipboard.writeText(user.studentId || user.employeeId)}
+                  className="text-gray-400 hover:text-gray-600"
+                  title="Copy ID"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                  </svg>
+                </button>
+              </div>
+            )}
+            
             <p className="text-sm text-gray-600 mb-1">
               <strong>Email:</strong> {user.email}
             </p>
             <p className="text-sm text-gray-600 mb-1">
               <strong>Status:</strong> {user.status}
             </p>
-            {user.studentId && (
-              <p className="text-sm text-gray-600 mb-1">
-                <strong>Student ID:</strong> {user.studentId}
-              </p>
-            )}
-            {user.employeeId && (
-              <p className="text-sm text-gray-600 mb-1">
-                <strong>Employee ID:</strong> {user.employeeId}
-              </p>
-            )}
             <p className="text-sm text-gray-600">
               <strong>Created:</strong> {new Date(user.createdAt).toLocaleDateString()}
             </p>

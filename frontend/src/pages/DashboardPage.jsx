@@ -124,9 +124,17 @@ const DashboardPage = () => {
           <h1 className="text-3xl font-bold text-gray-900">
             Welcome back, {getUserDisplayName()}!
           </h1>
-          <p className="text-gray-600 mt-2">
-            Role: {getUserRoleDisplay()} • Last login: {user?.lastLogin ? new Date(user.lastLogin).toLocaleDateString() : 'First time'}
-          </p>
+          <div className="mt-2 space-y-1">
+            <p className="text-gray-600">
+              Role: {getUserRoleDisplay()} • Last login: {user?.lastLogin ? new Date(user.lastLogin).toLocaleDateString() : 'First time'}
+            </p>
+            {(user?.studentId || user?.employeeId) && (
+              <p className="text-sm text-blue-600 font-medium">
+                {user?.studentId && `Student ID: ${user.studentId}`}
+                {user?.employeeId && `Employee ID: ${user.employeeId}`}
+              </p>
+            )}
+          </div>
         </div>
 
         {/* Dashboard Content */}

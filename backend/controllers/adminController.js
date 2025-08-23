@@ -3,6 +3,53 @@ import { asyncHandler } from '../middlewares/asyncHandler.js';
 import { successResponse, errorResponse, sendResponse } from '../utils/responseFormatter.js';
 import { HTTP_STATUS, MESSAGES } from '../utils/constants.js';
 import { body, validationResult } from 'express-validator';
+import { EmailService } from '../services/index.js';
+
+/**
+ * Helper function to generate next Student ID for a given year
+ * Format: ST{YEAR}{###} (e.g., ST2024001, ST2024002)
+ */
+const generateStudentId = async (enrollmentYear) => {
+  const yearPrefix = `ST${enrollmentYear}`;
+  
+  // Find the highest existing student ID for this year
+  const lastStudent = await User.findOne({
+    studentId: { $regex: `^${yearPrefix}` }
+  }).sort({ studentId: -1 });
+
+  let nextNumber = 1;
+  if (lastStudent && lastStudent.studentId) {
+    // Extract the number part and increment
+    const lastNumber = parseInt(lastStudent.studentId.slice(-3));
+    nextNumber = lastNumber + 1;
+  }
+
+  // Format as 3-digit number with leading zeros
+  const numberPart = nextNumber.toString().padStart(3, '0');
+  return `${yearPrefix}${numberPart}`;
+};
+
+/**
+ * Helper function to generate next Employee ID
+ * Format: EMP{###} (e.g., EMP001, EMP002)
+ */
+const generateEmployeeId = async () => {
+  // Find the highest existing employee ID
+  const lastEmployee = await User.findOne({
+    employeeId: { $regex: '^EMP' }
+  }).sort({ employeeId: -1 });
+
+  let nextNumber = 1;
+  if (lastEmployee && lastEmployee.employeeId) {
+    // Extract the number part and increment
+    const lastNumber = parseInt(lastEmployee.employeeId.slice(3));
+    nextNumber = lastNumber + 1;
+  }
+
+  // Format as 3-digit number with leading zeros
+  const numberPart = nextNumber.toString().padStart(3, '0');
+  return `EMP${numberPart}`;
+};
 
 /**
  * Admin User Management Controller
@@ -105,10 +152,8 @@ export class AdminController {
       email,
       password,
       role,
-      studentId,
       enrollmentYear,
       course,
-      employeeId,
       department,
       subjects,
       phoneNumber,
@@ -123,23 +168,6 @@ export class AdminController {
       return sendResponse(res, response);
     }
 
-    // Check for duplicate student/employee ID
-    if (role === USER_ROLES.STUDENT && studentId) {
-      const existingStudent = await User.findOne({ studentId });
-      if (existingStudent) {
-        const response = errorResponse('Student with this ID already exists', HTTP_STATUS.CONFLICT);
-        return sendResponse(res, response);
-      }
-    }
-
-    if (role === USER_ROLES.TEACHER && employeeId) {
-      const existingEmployee = await User.findOne({ employeeId });
-      if (existingEmployee) {
-        const response = errorResponse('Lecturer with this employee ID already exists', HTTP_STATUS.CONFLICT);
-        return sendResponse(res, response);
-      }
-    }
-
     // Create user object
     const userData = {
       name,
@@ -152,21 +180,62 @@ export class AdminController {
       dateOfBirth
     };
 
-    // Add role-specific fields
+    // Auto-generate IDs and add role-specific fields
     if (role === USER_ROLES.STUDENT) {
-      userData.studentId = studentId;
+      userData.studentId = await generateStudentId(enrollmentYear);
       userData.enrollmentYear = enrollmentYear;
       userData.course = course;
     } else if (role === USER_ROLES.TEACHER) {
-      userData.employeeId = employeeId;
+      userData.employeeId = await generateEmployeeId();
       userData.department = department;
       userData.subjects = subjects;
     }
 
+    // Store original password before hashing for email
+    const originalPassword = password;
+
     const user = new User(userData);
     await user.save();
 
-    const response = successResponse(user.toJSON(), MESSAGES.USER_CREATED, HTTP_STATUS.CREATED);
+    // Send welcome email with credentials (don't fail user creation if email fails)
+    let emailSent = false;
+    const shouldSendWelcomeEmails = process.env.SEND_WELCOME_EMAILS === 'true';
+    
+    if (shouldSendWelcomeEmails) {
+      try {
+        await EmailService.sendWelcomeEmail(
+          user.email,
+          user.name,
+          originalPassword,
+          user.role
+        );
+        emailSent = true;
+        console.log(`✅ Welcome email sent to ${user.email}`);
+      } catch (emailError) {
+        console.error(`⚠️ Failed to send welcome email to ${user.email}:`, emailError.message);
+        
+        // Log specific error types for debugging
+        if (emailError.message.includes('Invalid login')) {
+          console.log('💡 Email Error: Invalid Gmail credentials. Consider using App Password.');
+        } else if (emailError.message.includes('connection')) {
+          console.log('💡 Email Error: Connection issue. Check SMTP settings.');
+        }
+        
+        // Continue with user creation even if email fails
+      }
+    } else {
+      console.log(`📧 Welcome email skipped for ${user.email} (SEND_WELCOME_EMAILS=false)`);
+    }
+
+    const response = successResponse(
+      {
+        ...user.toJSON(),
+        emailSent,
+        temporaryPassword: shouldSendWelcomeEmails ? null : originalPassword // Include password in response if email not sent
+      }, 
+      MESSAGES.USER_CREATED, 
+      HTTP_STATUS.CREATED
+    );
     sendResponse(res, response);
   });
 
@@ -476,12 +545,6 @@ export const validateUpdateUser = [
     .isIn(Object.values(USER_STATUS))
     .withMessage('Invalid status'),
 
-  body('studentId')
-    .optional()
-    .trim()
-    .isLength({ min: 1 })
-    .withMessage('Student ID cannot be empty'),
-
   body('enrollmentYear')
     .optional()
     .isInt({ min: 2000, max: new Date().getFullYear() + 4 })
@@ -492,12 +555,6 @@ export const validateUpdateUser = [
     .trim()
     .isLength({ min: 1 })
     .withMessage('Course cannot be empty'),
-
-  body('employeeId')
-    .optional()
-    .trim()
-    .isLength({ min: 1 })
-    .withMessage('Employee ID cannot be empty'),
 
   body('department')
     .optional()

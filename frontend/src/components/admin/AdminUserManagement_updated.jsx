@@ -10,6 +10,8 @@ import { Key, Edit, Trash2, Plus, Shield, ShieldCheck, ShieldX, RefreshCw, TestT
 const AdminUserManagement = () => {
   const { user } = useAuth();
   const [users, setUsers] = useState([]);
+  const [filteredUsers, setFilteredUsers] = useState([]);
+  const [searchTerm, setSearchTerm] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [resetModalOpen, setResetModalOpen] = useState(false);
@@ -157,14 +159,23 @@ const AdminUserManagement = () => {
       console.log('Add user response:', data);
 
       if (response.ok && data.success) {
-        setSuccessMessage(`User "${userData.name}" created successfully!`);
+        const generatedId = data.data?.studentId || data.data?.employeeId || '';
+        const idInfo = generatedId ? `Generated ID: ${generatedId}. ` : '';
+        
+        const emailStatus = data.data?.emailSent ? 
+          'Login credentials have been sent via email.' : 
+          data.data?.temporaryPassword ? 
+            `Temporary password: ${data.data.temporaryPassword} (Email not sent)` :
+            'User created successfully.';
+            
+        setSuccessMessage(`User "${userData.name}" created successfully! ${idInfo}${emailStatus}`);
         setAddUserModalOpen(false);
         
         // Refresh users list
         await fetchUsers();
         
-        // Auto-hide success message after 5 seconds
-        setTimeout(() => setSuccessMessage(''), 5000);
+        // Auto-hide success message after 10 seconds (longer for password display)
+        setTimeout(() => setSuccessMessage(''), 10000);
       } else {
         setError(data.message || `Failed to create user: ${response.statusText}`);
       }
@@ -362,6 +373,27 @@ const AdminUserManagement = () => {
     }
   }, [user]);
 
+  // Filter users based on search term
+  useEffect(() => {
+    if (!searchTerm.trim()) {
+      setFilteredUsers(users);
+    } else {
+      const filtered = users.filter(userData => {
+        const searchLower = searchTerm.toLowerCase();
+        return (
+          userData.name?.toLowerCase().includes(searchLower) ||
+          userData.email?.toLowerCase().includes(searchLower) ||
+          userData.studentId?.toLowerCase().includes(searchLower) ||
+          userData.employeeId?.toLowerCase().includes(searchLower) ||
+          userData.role?.toLowerCase().includes(searchLower) ||
+          userData.course?.toLowerCase().includes(searchLower) ||
+          userData.department?.toLowerCase().includes(searchLower)
+        );
+      });
+      setFilteredUsers(filtered);
+    }
+  }, [users, searchTerm]);
+
   // Access denied screen with debug info
   if (!user || user.role !== 'admin') {
     const token = authStorage.getAccessToken();
@@ -430,6 +462,81 @@ const AdminUserManagement = () => {
           </div>
         </div>
 
+        {/* Search and Filters */}
+        <div className="mb-6">
+          <div className="max-w-md">
+            <label htmlFor="search" className="block text-sm font-medium text-gray-700 mb-2">
+              Search Users
+            </label>
+            <div className="relative">
+              <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                </svg>
+              </div>
+              <input
+                type="text"
+                id="search"
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="block w-full pl-10 pr-3 py-2 border border-gray-300 rounded-md placeholder-gray-400 focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                placeholder="Search by name, email, ID, role, course, or department..."
+              />
+              {searchTerm && (
+                <button
+                  onClick={() => setSearchTerm('')}
+                  className="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-400 hover:text-gray-600"
+                >
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              )}
+            </div>
+            {searchTerm && (
+              <p className="mt-1 text-sm text-gray-600">
+                Found {filteredUsers.length} user{filteredUsers.length !== 1 ? 's' : ''} matching "{searchTerm}"
+              </p>
+            )}
+          </div>
+        </div>
+
+        {/* Quick Stats & ID Format Info */}
+        {!loading && users.length > 0 && (
+          <div className="mb-6 grid grid-cols-1 md:grid-cols-4 gap-4">
+            <div className="bg-white rounded-lg p-4 border border-gray-200">
+              <div className="text-2xl font-bold text-blue-600">
+                {users.filter(u => u.role === 'student').length}
+              </div>
+              <div className="text-sm text-gray-600">Students</div>
+              <div className="text-xs text-blue-500 mt-1">ID Format: ST{new Date().getFullYear()}###</div>
+            </div>
+            <div className="bg-white rounded-lg p-4 border border-gray-200">
+              <div className="text-2xl font-bold text-green-600">
+                {users.filter(u => u.role === 'teacher').length}
+              </div>
+              <div className="text-sm text-gray-600">Teachers</div>
+              <div className="text-xs text-green-500 mt-1">ID Format: EMP###</div>
+            </div>
+            <div className="bg-white rounded-lg p-4 border border-gray-200">
+              <div className="text-2xl font-bold text-purple-600">
+                {users.filter(u => u.role === 'admin').length}
+              </div>
+              <div className="text-sm text-gray-600">Admins</div>
+              <div className="text-xs text-purple-500 mt-1">No auto-generated ID</div>
+            </div>
+            <div className="bg-white rounded-lg p-4 border border-gray-200">
+              <div className="text-2xl font-bold text-gray-600">
+                {users.length}
+              </div>
+              <div className="text-sm text-gray-600">Total Users</div>
+              {searchTerm && (
+                <div className="text-xs text-gray-500 mt-1">Showing: {filteredUsers.length}</div>
+              )}
+            </div>
+          </div>
+        )}
+
         {/* Success Message */}
         {successMessage && (
           <div className="bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded mb-4">
@@ -478,19 +585,42 @@ const AdminUserManagement = () => {
                   <thead className="bg-gray-50">
                     <tr>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">User</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">ID</th>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Role</th>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
                     </tr>
                   </thead>
                   <tbody className="bg-white divide-y divide-gray-200">
-                    {users.map((userData) => (
+                    {filteredUsers.map((userData) => (
                       <tr key={userData._id || userData.id} className="hover:bg-gray-50">
                         <td className="px-6 py-4 whitespace-nowrap">
                           <div>
                             <div className="text-sm font-medium text-gray-900">{userData.name}</div>
                             <div className="text-sm text-gray-500">{userData.email}</div>
                           </div>
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          {userData.studentId || userData.employeeId ? (
+                            <div className="flex items-center space-x-1">
+                              <span className={`inline-flex items-center px-2 py-1 rounded text-xs font-medium ${
+                                userData.studentId ? 'bg-blue-100 text-blue-800' : 'bg-green-100 text-green-800'
+                              }`}>
+                                {userData.studentId || userData.employeeId}
+                              </span>
+                              <button
+                                onClick={() => navigator.clipboard.writeText(userData.studentId || userData.employeeId)}
+                                className="text-gray-400 hover:text-gray-600"
+                                title="Copy ID"
+                              >
+                                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                                </svg>
+                              </button>
+                            </div>
+                          ) : (
+                            <span className="text-gray-400 text-xs">N/A</span>
+                          )}
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap">
                           <div className="flex items-center space-x-2">
@@ -554,15 +684,29 @@ const AdminUserManagement = () => {
                   </tbody>
                 </table>
 
-                {users.length === 0 && !loading && (
+                {filteredUsers.length === 0 && !loading && (
                   <div className="text-center py-8">
-                    <p className="text-gray-600">No users found.</p>
-                    <button 
-                      onClick={fetchUsers}
-                      className="mt-2 text-blue-600 hover:text-blue-800"
-                    >
-                      Try refreshing
-                    </button>
+                    {searchTerm ? (
+                      <div>
+                        <p className="text-gray-600">No users found matching "{searchTerm}".</p>
+                        <button 
+                          onClick={() => setSearchTerm('')}
+                          className="mt-2 text-blue-600 hover:text-blue-800"
+                        >
+                          Clear search
+                        </button>
+                      </div>
+                    ) : (
+                      <div>
+                        <p className="text-gray-600">No users found.</p>
+                        <button 
+                          onClick={fetchUsers}
+                          className="mt-2 text-blue-600 hover:text-blue-800"
+                        >
+                          Try refreshing
+                        </button>
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
