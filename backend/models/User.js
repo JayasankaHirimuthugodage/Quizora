@@ -67,6 +67,31 @@ const userSchema = new Schema({
     type: Date,
     default: null
   },
+  passwordChangeOtp: {
+    type: String,
+    default: null
+  },
+  passwordChangeOtpExpires: {
+    type: Date,
+    default: null
+  },
+  passwordChangeOtpAttempts: {
+    type: Number,
+    default: 0
+  },
+  // Forgot password OTP fields
+  forgotPasswordOtp: {
+    type: String,
+    default: null
+  },
+  forgotPasswordOtpExpires: {
+    type: Date,
+    default: null
+  },
+  forgotPasswordOtpAttempts: {
+    type: Number,
+    default: 0
+  },
   loginAttempts: {
     type: Number,
     default: 0
@@ -191,6 +216,8 @@ const userSchema = new Schema({
     transform: (doc, ret) => {
       delete ret.password;
       delete ret.passwordResetToken;
+      delete ret.passwordChangeOtp;
+      delete ret.forgotPasswordOtp;
       delete ret.__v;
       return ret;
     }
@@ -264,6 +291,88 @@ userSchema.methods.resetLoginAttempts = async function() {
   return this.updateOne({
     $unset: { loginAttempts: 1, lockUntil: 1 }
   });
+};
+
+// Instance method to generate password change OTP
+userSchema.methods.generatePasswordChangeOtp = function() {
+  const otp = Math.floor(100000 + Math.random() * 900000).toString(); // 6-digit OTP
+  const otpExpires = new Date(Date.now() + 5 * 60 * 1000); // 5 minutes from now
+  
+  this.passwordChangeOtp = otp;
+  this.passwordChangeOtpExpires = otpExpires;
+  this.passwordChangeOtpAttempts = 0;
+  
+  return otp;
+};
+
+// Instance method to verify password change OTP
+userSchema.methods.verifyPasswordChangeOtp = function(otp) {
+  if (!this.passwordChangeOtp || !this.passwordChangeOtpExpires) {
+    return { valid: false, message: 'No OTP found. Please request a new one.' };
+  }
+  
+  if (this.passwordChangeOtpExpires < new Date()) {
+    return { valid: false, message: 'OTP has expired. Please request a new one.' };
+  }
+  
+  if (this.passwordChangeOtpAttempts >= 3) {
+    return { valid: false, message: 'Too many invalid attempts. Please request a new OTP.' };
+  }
+  
+  if (this.passwordChangeOtp !== otp) {
+    this.passwordChangeOtpAttempts += 1;
+    return { valid: false, message: 'Invalid OTP. Please try again.' };
+  }
+  
+  return { valid: true, message: 'OTP verified successfully.' };
+};
+
+// Instance method to clear password change OTP
+userSchema.methods.clearPasswordChangeOtp = function() {
+  this.passwordChangeOtp = undefined;
+  this.passwordChangeOtpExpires = undefined;
+  this.passwordChangeOtpAttempts = 0;
+};
+
+// Instance method to generate forgot password OTP
+userSchema.methods.generateForgotPasswordOtp = function() {
+  const otp = Math.floor(100000 + Math.random() * 900000).toString(); // 6-digit OTP
+  const otpExpires = new Date(Date.now() + 5 * 60 * 1000); // 5 minutes
+  
+  this.forgotPasswordOtp = otp;
+  this.forgotPasswordOtpExpires = otpExpires;
+  this.forgotPasswordOtpAttempts = 0;
+  
+  return otp;
+};
+
+// Instance method to verify forgot password OTP
+userSchema.methods.verifyForgotPasswordOtp = function(otp) {
+  if (!this.forgotPasswordOtp || !this.forgotPasswordOtpExpires) {
+    return { valid: false, message: 'No OTP found. Please request a new one.' };
+  }
+  
+  if (this.forgotPasswordOtpExpires < new Date()) {
+    return { valid: false, message: 'OTP has expired. Please request a new one.' };
+  }
+  
+  if (this.forgotPasswordOtpAttempts >= 3) {
+    return { valid: false, message: 'Too many invalid attempts. Please request a new OTP.' };
+  }
+  
+  if (this.forgotPasswordOtp !== otp) {
+    this.forgotPasswordOtpAttempts += 1;
+    return { valid: false, message: 'Invalid OTP. Please try again.' };
+  }
+  
+  return { valid: true, message: 'OTP verified successfully.' };
+};
+
+// Instance method to clear forgot password OTP
+userSchema.methods.clearForgotPasswordOtp = function() {
+  this.forgotPasswordOtp = undefined;
+  this.forgotPasswordOtpExpires = undefined;
+  this.forgotPasswordOtpAttempts = 0;
 };
 
 // Static method to find by email

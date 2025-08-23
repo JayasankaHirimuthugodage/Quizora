@@ -29,6 +29,9 @@ export const MESSAGES = {
   PASSWORD_RESET_SENT: 'Password reset link sent to your email',
   PASSWORD_RESET_SUCCESS: 'Password reset successful',
   PASSWORD_RESET_TOKEN_INVALID: 'Invalid or expired password reset token',
+  FORGOT_PASSWORD_OTP_SENT: 'If your email is registered, you will receive an OTP code shortly',
+  FORGOT_PASSWORD_OTP_INVALID: 'Invalid or expired OTP',
+  FORGOT_PASSWORD_SUCCESS: 'Password reset successfully. Please sign in with your new password.',
   
   // Validation messages
   VALIDATION_ERROR: 'Validation error',

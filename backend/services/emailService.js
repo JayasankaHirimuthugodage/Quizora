@@ -97,6 +97,40 @@ export class EmailService {
   }
 
   /**
+   * Send password change OTP email
+   * @param {string} email - Recipient email
+   * @param {string} otp - 6-digit OTP
+   * @param {string} userName - User name
+   * @returns {Object} Send result
+   */
+  static async sendPasswordChangeOtpEmail(email, otp, userName) {
+    const html = this.getPasswordChangeOtpTemplate(userName, otp);
+    
+    return this.sendEmail({
+      to: email,
+      subject: 'Your Password Change OTP - Quizora',
+      html
+    });
+  }
+
+  /**
+   * Send forgot password OTP email
+   * @param {string} email - Recipient email
+   * @param {string} otp - 6-digit OTP
+   * @param {string} userName - User name
+   * @returns {Object} Send result
+   */
+  static async sendForgotPasswordOtpEmail(email, otp, userName) {
+    const html = this.getForgotPasswordOtpTemplate(userName, otp);
+    
+    return this.sendEmail({
+      to: email,
+      subject: 'Your Password Reset OTP - Quizora',
+      html
+    });
+  }
+
+  /**
    * Send welcome email to new users
    * @param {string} email - Recipient email
    * @param {string} userName - User name
@@ -297,6 +331,138 @@ export class EmailService {
               </div>
               <div class="footer">
                   <p>This is an automated security notification.</p>
+                  <p>&copy; 2025 Quizora. All rights reserved.</p>
+              </div>
+          </div>
+      </body>
+      </html>
+    `;
+  }
+
+  /**
+   * Get password change OTP email template
+   * @param {string} userName - User name
+   * @param {string} otp - 6-digit OTP
+   * @returns {string} HTML template
+   */
+  static getPasswordChangeOtpTemplate(userName, otp) {
+    return `
+      <!DOCTYPE html>
+      <html>
+      <head>
+          <meta charset="utf-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1.0">
+          <title>Password Change OTP</title>
+          <style>
+              body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+              .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+              .header { background: #007bff; color: white; padding: 20px; text-align: center; }
+              .content { padding: 20px; background: #f9f9f9; }
+              .otp-container { background: white; border: 2px solid #007bff; border-radius: 10px; padding: 20px; text-align: center; margin: 20px 0; }
+              .otp-code { font-size: 32px; font-weight: bold; color: #007bff; letter-spacing: 8px; font-family: monospace; }
+              .footer { text-align: center; padding: 20px; font-size: 14px; color: #666; }
+              .warning { background: #fff3cd; border: 1px solid #ffeaa7; padding: 15px; border-radius: 5px; margin: 20px 0; }
+              .security-note { background: #f8f9fa; border-left: 4px solid #007bff; padding: 15px; margin: 20px 0; }
+          </style>
+      </head>
+      <body>
+          <div class="container">
+              <div class="header">
+                  <h1>Quizora</h1>
+                  <h2>Password Change Verification</h2>
+              </div>
+              <div class="content">
+                  <p>Hello ${userName},</p>
+                  <p>You have requested to change your password. Use the following One-Time Password (OTP) to complete the process:</p>
+                  
+                  <div class="otp-container">
+                      <p style="margin: 0; font-size: 16px; color: #666;">Your OTP Code:</p>
+                      <div class="otp-code">${otp}</div>
+                      <p style="margin: 10px 0 0 0; font-size: 14px; color: #666;">This code is valid for 5 minutes</p>
+                  </div>
+
+                  <div class="security-note">
+                      <strong>Security Information:</strong>
+                      <ul style="margin: 10px 0;">
+                          <li>This OTP will expire in <strong>5 minutes</strong></li>
+                          <li>You have <strong>3 attempts</strong> to enter the correct OTP</li>
+                          <li>If you didn't request this, please ignore this email</li>
+                          <li>Never share this OTP with anyone</li>
+                      </ul>
+                  </div>
+
+                  <div class="warning">
+                      <strong>Important:</strong> If you did not request this password change, please contact support immediately or change your password through the forgot password option.
+                  </div>
+              </div>
+              <div class="footer">
+                  <p>This is an automated email. Please do not reply.</p>
+                  <p>&copy; 2025 Quizora. All rights reserved.</p>
+              </div>
+          </div>
+      </body>
+      </html>
+    `;
+  }
+
+  /**
+   * Get forgot password OTP email template
+   * @param {string} userName - User name
+   * @param {string} otp - 6-digit OTP
+   * @returns {string} HTML template
+   */
+  static getForgotPasswordOtpTemplate(userName, otp) {
+    return `
+      <!DOCTYPE html>
+      <html>
+      <head>
+          <meta charset="utf-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1.0">
+          <title>Password Reset OTP</title>
+          <style>
+              body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+              .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+              .header { background: #dc3545; color: white; padding: 20px; text-align: center; }
+              .content { padding: 20px; background: #f9f9f9; }
+              .otp-container { background: white; border: 2px solid #dc3545; border-radius: 10px; padding: 20px; text-align: center; margin: 20px 0; }
+              .otp-code { font-size: 32px; font-weight: bold; color: #dc3545; letter-spacing: 8px; font-family: monospace; }
+              .footer { text-align: center; padding: 20px; font-size: 14px; color: #666; }
+              .warning { background: #fff3cd; border: 1px solid #ffeaa7; padding: 15px; border-radius: 5px; margin: 20px 0; }
+              .security-note { background: #f8f9fa; border-left: 4px solid #dc3545; padding: 15px; margin: 20px 0; }
+          </style>
+      </head>
+      <body>
+          <div class="container">
+              <div class="header">
+                  <h1>Quizora</h1>
+                  <h2>Password Reset Request</h2>
+              </div>
+              <div class="content">
+                  <p>Hello ${userName},</p>
+                  <p>You have requested to reset your password. Use the following One-Time Password (OTP) to create a new password:</p>
+                  
+                  <div class="otp-container">
+                      <p style="margin: 0; font-size: 16px; color: #666;">Your Reset OTP:</p>
+                      <div class="otp-code">${otp}</div>
+                      <p style="margin: 10px 0 0 0; font-size: 14px; color: #666;">This code is valid for 5 minutes</p>
+                  </div>
+
+                  <div class="security-note">
+                      <strong>Security Information:</strong>
+                      <ul style="margin: 10px 0;">
+                          <li>This OTP will expire in <strong>5 minutes</strong></li>
+                          <li>You have <strong>3 attempts</strong> to enter the correct OTP</li>
+                          <li>If you didn't request this, you can safely ignore this email</li>
+                          <li>Never share this OTP with anyone</li>
+                      </ul>
+                  </div>
+
+                  <div class="warning">
+                      <strong>Important:</strong> If you did not request this password reset, someone else might be trying to access your account. Consider changing your password if you can still access your account.
+                  </div>
+              </div>
+              <div class="footer">
+                  <p>This is an automated email. Please do not reply.</p>
                   <p>&copy; 2025 Quizora. All rights reserved.</p>
               </div>
           </div>

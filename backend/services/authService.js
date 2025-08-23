@@ -142,11 +142,11 @@ export class AuthService {
   }
 
   /**
-   * Generate password reset token
+   * Generate forgot password OTP
    * @param {string} email - User email
-   * @returns {Object} Reset token and user
+   * @returns {Object} OTP generation result
    */
-  static async generatePasswordResetToken(email) {
+  static async generateForgotPasswordOtp(email) {
     try {
       const user = await User.findOne({ email: email.toLowerCase() });
 
@@ -155,20 +155,21 @@ export class AuthService {
         return { success: true };
       }
 
-      // Generate reset token
-      const resetToken = generateRandomToken();
-      const resetExpires = new Date(Date.now() + 60 * 60 * 1000); // 1 hour
+      // Check if user account is active
+      if (user.status !== 'active') {
+        return { success: true }; // Don't reveal account status
+      }
 
-      // Save reset token to user
-      await User.findByIdAndUpdate(user._id, {
-        passwordResetToken: resetToken,
-        passwordResetExpires: resetExpires
-      });
+      // Generate OTP
+      const otp = user.generateForgotPasswordOtp();
+      
+      // Save OTP to user
+      await user.save();
 
       return {
         success: true,
         user,
-        resetToken
+        otp
       };
 
     } catch (error) {
@@ -177,29 +178,44 @@ export class AuthService {
   }
 
   /**
-   * Reset password using reset token
-   * @param {string} token - Reset token
+   * Verify forgot password OTP and reset password
+   * @param {string} email - User email
+   * @param {string} otp - OTP code
    * @param {string} newPassword - New password
    * @returns {Object} Reset result
    */
-  static async resetPassword(token, newPassword) {
+  static async verifyOtpAndResetPassword(email, otp, newPassword) {
     try {
-      const user = await User.findOne({
-        passwordResetToken: token,
-        passwordResetExpires: { $gt: Date.now() }
-      });
+      const user = await User.findOne({ email: email.toLowerCase() }).select('+password');
 
       if (!user) {
         throw new AppError(
-          MESSAGES.PASSWORD_RESET_TOKEN_INVALID,
+          'Invalid request. Please try again.',
           HTTP_STATUS.BAD_REQUEST
         );
       }
 
-      // Update password and clear reset token
+      // Verify OTP
+      const otpVerification = user.verifyForgotPasswordOtp(otp);
+      
+      if (!otpVerification.valid) {
+        // Save the incremented attempt count
+        await user.save();
+        throw new AppError(otpVerification.message, HTTP_STATUS.BAD_REQUEST);
+      }
+
+      // Check if new password is different from current password
+      const isSamePassword = await user.comparePassword(newPassword);
+      if (isSamePassword) {
+        throw new AppError(
+          'New password must be different from your current password',
+          HTTP_STATUS.BAD_REQUEST
+        );
+      }
+
+      // Update password and clear OTP
       user.password = newPassword;
-      user.passwordResetToken = undefined;
-      user.passwordResetExpires = undefined;
+      user.clearForgotPasswordOtp();
       
       // Reset login attempts
       user.loginAttempts = 0;

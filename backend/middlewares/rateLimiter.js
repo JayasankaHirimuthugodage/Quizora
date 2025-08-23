@@ -64,9 +64,32 @@ export const createUserRateLimiter = (options) => {
     const userRequests = store.get(userId) || [];
     
     if (userRequests.length >= options.max) {
+      // Calculate time until next request is allowed
+      const oldestRequest = Math.min(...userRequests);
+      const timeUntilReset = Math.ceil((oldestRequest + options.windowMs - now) / 1000);
+      
+      // Format time remaining message
+      const formatTime = (seconds) => {
+        if (seconds < 60) {
+          return `${seconds} second${seconds !== 1 ? 's' : ''}`;
+        }
+        const minutes = Math.floor(seconds / 60);
+        const remainingSeconds = seconds % 60;
+        if (remainingSeconds === 0) {
+          return `${minutes} minute${minutes !== 1 ? 's' : ''}`;
+        }
+        return `${minutes} minute${minutes !== 1 ? 's' : ''} and ${remainingSeconds} second${remainingSeconds !== 1 ? 's' : ''}`;
+      };
+
+      const message = options.messageWithTime 
+        ? options.messageWithTime.replace('{time}', formatTime(timeUntilReset))
+        : `${options.message || 'Too many requests'}. Please wait ${formatTime(timeUntilReset)} before trying again.`;
+
       const response = errorResponse(
-        options.message || 'Too many requests',
-        HTTP_STATUS.TOO_MANY_REQUESTS
+        message,
+        HTTP_STATUS.TOO_MANY_REQUESTS,
+        null,
+        { retryAfter: timeUntilReset }
       );
       return res.status(response.statusCode).json(response);
     }
@@ -89,4 +112,20 @@ export const userPasswordChangeRateLimit = createUserRateLimiter({
   windowMs: 60 * 60 * 1000, // 1 hour
   max: 3, // 3 password changes per user per hour
   message: 'Too many password change attempts'
+});
+
+// OTP request rate limiter (3 OTP requests per 5 minutes)
+export const otpRequestRateLimit = createUserRateLimiter({
+  windowMs: 5 * 60 * 1000, // 5 minutes
+  max: 3, // 3 OTP requests per 5 minutes
+  message: 'Too many OTP requests',
+  messageWithTime: 'You can request another OTP in {time}'
+});
+
+// OTP verification rate limiter (10 attempts per 15 minutes - more generous)
+export const otpVerificationRateLimit = createUserRateLimiter({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 10, // 10 OTP verification attempts per 15 minutes
+  message: 'Too many OTP verification attempts',
+  messageWithTime: 'Too many failed attempts. Please wait {time} before trying again'
 });

@@ -20,14 +20,16 @@ export const successResponse = (data = null, message = 'Success', statusCode = H
  * @param {string} message - Error message
  * @param {number} statusCode - HTTP status code
  * @param {Array} errors - Detailed error array
+ * @param {Object} meta - Additional metadata
  * @returns {Object} Formatted error response object
  */
-export const errorResponse = (message = 'Error', statusCode = HTTP_STATUS.INTERNAL_SERVER_ERROR, errors = []) => ({
+export const errorResponse = (message = 'Error', statusCode = HTTP_STATUS.INTERNAL_SERVER_ERROR, errors = [], meta = {}) => ({
   success: false,
   message,
   errors,
   statusCode,
-  timestamp: new Date().toISOString()
+  timestamp: new Date().toISOString(),
+  ...meta
 });
 
 /**

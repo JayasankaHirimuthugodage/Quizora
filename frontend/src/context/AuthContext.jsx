@@ -256,21 +256,21 @@ export const AuthProvider = ({ children }) => {
     dispatch({ type: AUTH_ACTIONS.CLEAR_ERROR });
   };
 
-  // Forgot password
-  const forgotPassword = async (email) => {
+  // Request forgot password OTP
+  const requestForgotPasswordOtp = async (email) => {
     try {
-      await AuthService.forgotPassword(email);
+      await AuthService.requestForgotPasswordOtp(email);
       return { success: true };
     } catch (error) {
-      const errorMessage = error.response?.data?.message || error.message || 'Failed to send reset email';
+      const errorMessage = error.response?.data?.message || error.message || 'Failed to send OTP';
       return { success: false, error: errorMessage };
     }
   };
 
-  // Reset password
-  const resetPassword = async (token, newPassword) => {
+  // Verify forgot password OTP and reset password
+  const verifyForgotPasswordOtp = async (resetData) => {
     try {
-      await AuthService.resetPassword(token, newPassword);
+      await AuthService.verifyForgotPasswordOtp(resetData);
       return { success: true };
     } catch (error) {
       const errorMessage = error.response?.data?.message || error.message || 'Failed to reset password';
@@ -281,7 +281,11 @@ export const AuthProvider = ({ children }) => {
   // Change password
   const changePassword = async (currentPassword, newPassword) => {
     try {
-      await AuthService.changePassword(currentPassword, newPassword);
+      const passwordData = {
+        currentPassword,
+        password: newPassword
+      };
+      await AuthService.changePassword(passwordData);
       return { success: true };
     } catch (error) {
       const errorMessage = error.response?.data?.message || error.message || 'Failed to change password';
@@ -318,8 +322,8 @@ export const AuthProvider = ({ children }) => {
     refreshToken,
     updateUser,
     clearError,
-    forgotPassword,
-    resetPassword,
+    requestForgotPasswordOtp,
+    verifyForgotPasswordOtp,
     changePassword,
     
     // Utility functions

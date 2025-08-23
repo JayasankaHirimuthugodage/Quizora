@@ -79,21 +79,21 @@ export class AuthService {
   }
 
   /**
-   * Forgot password
+   * Request forgot password OTP
    * @param {string} email - User email
    * @returns {Promise} Response
    */
-  static async forgotPassword(email) {
-    return apiService.post(API_CONFIG.ENDPOINTS.AUTH.FORGOT_PASSWORD, { email });
+  static async requestForgotPasswordOtp(email) {
+    return apiService.post(API_CONFIG.ENDPOINTS.AUTH.FORGOT_PASSWORD_OTP, { email });
   }
 
   /**
-   * Reset password
-   * @param {Object} resetData - Reset password data
+   * Verify forgot password OTP and reset password
+   * @param {Object} resetData - Reset password data with OTP
    * @returns {Promise} Response
    */
-  static async resetPassword(resetData) {
-    return apiService.post(API_CONFIG.ENDPOINTS.AUTH.RESET_PASSWORD, resetData);
+  static async verifyForgotPasswordOtp(resetData) {
+    return apiService.post(API_CONFIG.ENDPOINTS.AUTH.VERIFY_FORGOT_PASSWORD_OTP, resetData);
   }
 
   /**
@@ -103,6 +103,24 @@ export class AuthService {
    */
   static async changePassword(passwordData) {
     return apiService.put(API_CONFIG.ENDPOINTS.AUTH.CHANGE_PASSWORD, passwordData);
+  }
+
+  /**
+   * Request OTP for password change (students and teachers only)
+   * @param {Object} data - Current password
+   * @returns {Promise} Response
+   */
+  static async requestPasswordChangeOtp(data) {
+    return apiService.post(API_CONFIG.ENDPOINTS.AUTH.REQUEST_PASSWORD_CHANGE_OTP, data);
+  }
+
+  /**
+   * Verify OTP and change password (students and teachers only)
+   * @param {Object} data - OTP and new password data
+   * @returns {Promise} Response
+   */
+  static async verifyOtpAndChangePassword(data) {
+    return apiService.post(API_CONFIG.ENDPOINTS.AUTH.VERIFY_OTP_AND_CHANGE_PASSWORD, data);
   }
 
   /**

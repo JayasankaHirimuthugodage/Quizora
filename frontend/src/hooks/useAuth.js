@@ -206,9 +206,9 @@ export const useAuthForm = () => {
   };
 
   /**
-   * Forgot password form handler
+   * Request forgot password OTP form handler
    */
-  const forgotPasswordForm = async (email, options = {}) => {
+  const requestForgotPasswordOtp = async (email, options = {}) => {
     const { onSuccess, onError } = options;
 
     if (!email) {
@@ -218,7 +218,7 @@ export const useAuthForm = () => {
     }
 
     try {
-      const result = await auth.forgotPassword(email);
+      const result = await auth.requestForgotPasswordOtp(email);
       
       if (result.success) {
         if (onSuccess) onSuccess();
@@ -228,21 +228,21 @@ export const useAuthForm = () => {
       
       return result;
     } catch (error) {
-      const errorMessage = error.message || 'Failed to send reset email';
+      const errorMessage = error.message || 'Failed to send OTP';
       if (onError) onError(errorMessage);
       return { success: false, error: errorMessage };
     }
   };
 
   /**
-   * Reset password form handler
+   * Verify forgot password OTP form handler
    */
-  const resetPasswordForm = async (formData, options = {}) => {
-    const { token, password, confirmPassword } = formData;
+  const verifyForgotPasswordOtp = async (formData, options = {}) => {
+    const { email, otp, password, confirmPassword } = formData;
     const { onSuccess, onError } = options;
 
     // Validation
-    if (!token || !password || !confirmPassword) {
+    if (!email || !otp || !password || !confirmPassword) {
       const error = 'All fields are required';
       if (onError) onError(error);
       return { success: false, error };
@@ -254,8 +254,18 @@ export const useAuthForm = () => {
       return { success: false, error };
     }
 
+    if (otp.length !== 6 || !/^\d+$/.test(otp)) {
+      const error = 'OTP must be 6 digits';
+      if (onError) onError(error);
+      return { success: false, error };
+    }
+
     try {
-      const result = await auth.resetPassword(token, password);
+      const result = await auth.verifyForgotPasswordOtp({
+        email,
+        otp,
+        password
+      });
       
       if (result.success) {
         if (onSuccess) onSuccess();
@@ -316,8 +326,8 @@ export const useAuthForm = () => {
 
   return {
     loginForm,
-    forgotPasswordForm,
-    resetPasswordForm,
+    requestForgotPasswordOtp,
+    verifyForgotPasswordOtp,
     changePasswordForm,
     isLoading: auth.isLoading,
     error: auth.error,

@@ -9,6 +9,12 @@ export const handleValidationErrors = (req, res, next) => {
   
   if (!errors.isEmpty()) {
     const validationErrors = errors.array();
+    console.log('❌ Validation Errors:', {
+      path: req.path,
+      method: req.method,
+      errors: validationErrors,
+      body: req.body
+    });
     return sendResponse(res, validationErrorResponse(validationErrors));
   }
   
@@ -55,7 +61,8 @@ export const customValidations = {
    * Validate password strength for password changes
    */
   validatePasswordStrength: (req, res, next) => {
-    const { password } = req.body;
+    // Check for either 'password' or 'newPassword' field
+    const password = req.body.password || req.body.newPassword;
 
     if (!password) {
       return next(); // Skip if no password provided
@@ -71,7 +78,7 @@ export const customValidations = {
 
     if (password.length < minLength) {
       errors.push({
-        param: 'password',
+        param: req.body.password ? 'password' : 'newPassword',
         msg: `Password must be at least ${minLength} characters long`,
         value: password
       });
@@ -79,7 +86,7 @@ export const customValidations = {
 
     if (!hasUpperCase) {
       errors.push({
-        param: 'password',
+        param: req.body.password ? 'password' : 'newPassword',
         msg: 'Password must contain at least one uppercase letter',
         value: password
       });
@@ -87,7 +94,7 @@ export const customValidations = {
 
     if (!hasLowerCase) {
       errors.push({
-        param: 'password',
+        param: req.body.password ? 'password' : 'newPassword',
         msg: 'Password must contain at least one lowercase letter',
         value: password
       });
@@ -95,7 +102,7 @@ export const customValidations = {
 
     if (!hasNumbers) {
       errors.push({
-        param: 'password',
+        param: req.body.password ? 'password' : 'newPassword',
         msg: 'Password must contain at least one number',
         value: password
       });
@@ -103,7 +110,7 @@ export const customValidations = {
 
     if (!hasSpecialChar) {
       errors.push({
-        param: 'password',
+        param: req.body.password ? 'password' : 'newPassword',
         msg: 'Password must contain at least one special character',
         value: password
       });

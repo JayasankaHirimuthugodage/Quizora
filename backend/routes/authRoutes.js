@@ -4,7 +4,11 @@ import {
   loginValidation,
   passwordResetValidation,
   resetPasswordValidation,
-  changePasswordValidation
+  verifyOtpValidation,
+  changePasswordValidation,
+  directChangePasswordValidation,
+  passwordChangeOtpRequestValidation,
+  otpPasswordChangeValidation
 } from '../utils/validators.js';
 import { 
   handleValidationErrors,
@@ -13,7 +17,9 @@ import {
 import { 
   loginRateLimit,
   passwordResetRateLimit,
-  userPasswordChangeRateLimit
+  userPasswordChangeRateLimit,
+  otpRequestRateLimit,
+  otpVerificationRateLimit
 } from '../middlewares/rateLimiter.js';
 import { authenticate } from '../middlewares/auth.js';
 
@@ -51,26 +57,27 @@ router.post('/logout',
 );
 
 /**
- * @route   POST /api/auth/forgot-password
- * @desc    Send password reset email
+ * @route   POST /api/auth/forgot-password-otp
+ * @desc    Send password reset OTP via email
  * @access  Public
  */
-router.post('/forgot-password',
+router.post('/forgot-password-otp',
   passwordResetRateLimit,
   passwordResetValidation,
   handleValidationErrors,
-  AuthController.forgotPassword
+  AuthController.forgotPasswordOtp
 );
 
 /**
- * @route   POST /api/auth/reset-password
- * @desc    Reset password using token
+ * @route   POST /api/auth/verify-forgot-password-otp
+ * @desc    Verify OTP and reset password
  * @access  Public
  */
-router.post('/reset-password',
-  resetPasswordValidation,
+router.post('/verify-forgot-password-otp',
+  otpVerificationRateLimit,
+  verifyOtpValidation,
   handleValidationErrors,
-  AuthController.resetPassword
+  AuthController.verifyForgotPasswordOtp
 );
 
 /**
@@ -81,7 +88,7 @@ router.post('/reset-password',
 router.put('/change-password',
   authenticate,
   userPasswordChangeRateLimit,
-  changePasswordValidation,
+  directChangePasswordValidation,
   handleValidationErrors,
   customValidations.validatePasswordStrength,
   AuthController.changePassword
@@ -122,6 +129,33 @@ router.post('/check-email',
  */
 router.get('/verify-reset-token/:token',
   AuthController.verifyResetToken
+);
+
+/**
+ * @route   POST /api/auth/request-password-change-otp
+ * @desc    Request OTP for password change (students and teachers only)
+ * @access  Private
+ */
+router.post('/request-password-change-otp',
+  authenticate,
+  otpRequestRateLimit,
+  passwordChangeOtpRequestValidation,
+  handleValidationErrors,
+  AuthController.requestPasswordChangeOtp
+);
+
+/**
+ * @route   POST /api/auth/verify-otp-and-change-password
+ * @desc    Verify OTP and change password (students and teachers only)
+ * @access  Private
+ */
+router.post('/verify-otp-and-change-password',
+  authenticate,
+  otpVerificationRateLimit,
+  otpPasswordChangeValidation,
+  handleValidationErrors,
+  customValidations.validatePasswordStrength,
+  AuthController.verifyOtpAndChangePassword
 );
 
 export default router;

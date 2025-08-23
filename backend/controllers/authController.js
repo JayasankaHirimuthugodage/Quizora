@@ -68,25 +68,25 @@ export class AuthController {
   });
 
   /**
-   * Forgot password - send reset email
-   * @route POST /api/auth/forgot-password
+   * Forgot password - send OTP via email
+   * @route POST /api/auth/forgot-password-otp
    * @access Public
    */
-  static forgotPassword = asyncHandler(async (req, res) => {
+  static forgotPasswordOtp = asyncHandler(async (req, res) => {
     const { email } = req.body;
 
-    const result = await AuthService.generatePasswordResetToken(email);
+    const result = await AuthService.generateForgotPasswordOtp(email);
 
-    // If user exists, send reset email
-    if (result.user && result.resetToken) {
+    // If user exists, send OTP email
+    if (result.user && result.otp) {
       try {
-        await EmailService.sendPasswordResetEmail(
+        await EmailService.sendForgotPasswordOtpEmail(
           result.user.email,
-          result.resetToken,
+          result.otp,
           result.user.name
         );
       } catch (emailError) {
-        console.error('Failed to send password reset email:', emailError);
+        console.error('Failed to send forgot password OTP email:', emailError);
         // Don't expose email sending failure to client
       }
     }
@@ -94,25 +94,25 @@ export class AuthController {
     // Always return success to prevent email enumeration
     const response = successResponse(
       null,
-      MESSAGES.PASSWORD_RESET_SENT
+      'If your email is registered, you will receive an OTP code shortly'
     );
 
     sendResponse(res, response);
   });
 
   /**
-   * Reset password using token
-   * @route POST /api/auth/reset-password
+   * Verify forgot password OTP and reset password
+   * @route POST /api/auth/verify-forgot-password-otp
    * @access Public
    */
-  static resetPassword = asyncHandler(async (req, res) => {
-    const { token, password } = req.body;
+  static verifyForgotPasswordOtp = asyncHandler(async (req, res) => {
+    const { email, otp, password } = req.body;
 
-    await AuthService.resetPassword(token, password);
+    await AuthService.verifyOtpAndResetPassword(email, otp, password);
 
     const response = successResponse(
       null,
-      MESSAGES.PASSWORD_RESET_SUCCESS
+      'Password reset successfully. Please sign in with your new password.'
     );
 
     sendResponse(res, response);
@@ -223,6 +223,140 @@ export class AuthController {
     const response = successResponse(
       { valid: true },
       'Reset token is valid'
+    );
+
+    sendResponse(res, response);
+  });
+
+  /**
+   * Request OTP for password change (students and teachers only)
+   * @route POST /api/auth/request-password-change-otp
+   * @access Private
+   */
+  static requestPasswordChangeOtp = asyncHandler(async (req, res) => {
+    const { currentPassword } = req.body;
+
+    console.log('🔍 OTP Request Debug:', {
+      userId: req.user._id,
+      userRole: req.user.role,
+      hasCurrentPassword: !!currentPassword,
+      requestTime: new Date().toISOString()
+    });
+
+    // Check if user is admin (admins use simple password change)
+    if (req.user.role === 'admin') {
+      throw new AppError(
+        'Admins should use the regular change password endpoint',
+        HTTP_STATUS.BAD_REQUEST
+      );
+    }
+
+    if (!currentPassword) {
+      throw new AppError('Current password is required', HTTP_STATUS.BAD_REQUEST);
+    }
+
+    const { User } = await import('../models/index.js');
+    const user = await User.findById(req.user._id).select('+password');
+
+    if (!user) {
+      throw new AppError(MESSAGES.USER_NOT_FOUND, HTTP_STATUS.NOT_FOUND);
+    }
+
+    // Verify current password
+    const isCurrentPasswordValid = await user.comparePassword(currentPassword);
+    if (!isCurrentPasswordValid) {
+      throw new AppError('Current password is incorrect', HTTP_STATUS.BAD_REQUEST);
+    }
+
+    // Generate and save OTP
+    const otp = user.generatePasswordChangeOtp();
+    await user.save();
+
+    // Send OTP via email
+    try {
+      await EmailService.sendPasswordChangeOtpEmail(
+        user.email,
+        otp,
+        user.name
+      );
+    } catch (emailError) {
+      console.error('Failed to send OTP email:', emailError);
+      // Clear the OTP if email fails
+      user.clearPasswordChangeOtp();
+      await user.save();
+      throw new AppError('Failed to send OTP email. Please try again.', HTTP_STATUS.INTERNAL_SERVER_ERROR);
+    }
+
+    const response = successResponse(
+      { message: 'OTP sent to your email address' },
+      'OTP sent successfully'
+    );
+
+    sendResponse(res, response);
+  });
+
+  /**
+   * Verify OTP and change password (students and teachers only)
+   * @route POST /api/auth/verify-otp-and-change-password
+   * @access Private
+   */
+  static verifyOtpAndChangePassword = asyncHandler(async (req, res) => {
+    const { otp, newPassword } = req.body;
+
+    console.log('🔍 OTP Verification Debug:', {
+      userId: req.user._id,
+      userRole: req.user.role,
+      hasOtp: !!otp,
+      otpLength: otp?.length,
+      otpValue: otp,
+      hasNewPassword: !!newPassword,
+      passwordLength: newPassword?.length,
+      requestTime: new Date().toISOString()
+    });
+
+    // Check if user is admin
+    if (req.user.role === 'admin') {
+      throw new AppError(
+        'Admins should use the regular change password endpoint',
+        HTTP_STATUS.BAD_REQUEST
+      );
+    }
+
+    if (!otp || !newPassword) {
+      throw new AppError('OTP and new password are required', HTTP_STATUS.BAD_REQUEST);
+    }
+
+    const { User } = await import('../models/index.js');
+    const user = await User.findById(req.user._id).select('+password');
+
+    if (!user) {
+      throw new AppError(MESSAGES.USER_NOT_FOUND, HTTP_STATUS.NOT_FOUND);
+    }
+
+    // Verify OTP
+    const otpVerification = user.verifyPasswordChangeOtp(otp);
+    if (!otpVerification.valid) {
+      await user.save(); // Save the incremented attempt count
+      throw new AppError(otpVerification.message, HTTP_STATUS.BAD_REQUEST);
+    }
+
+    // Check if new password is different from current
+    const isSamePassword = await user.comparePassword(newPassword);
+    if (isSamePassword) {
+      throw new AppError(
+        'New password must be different from current password',
+        HTTP_STATUS.BAD_REQUEST
+      );
+    }
+
+    // Update password and clear OTP
+    user.password = newPassword;
+    user.clearPasswordChangeOtp();
+    await user.save();
+
+    const response = successResponse(
+      null,
+      'Password changed successfully'
     );
 
     sendResponse(res, response);

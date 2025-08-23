@@ -77,11 +77,14 @@ export const passwordResetValidation = [
   emailValidation()
 ];
 
-// Reset password validation
+// Reset password validation (for OTP-based reset)
 export const resetPasswordValidation = [
-  body('token')
-    .notEmpty()
-    .withMessage('Reset token is required'),
+  emailValidation(),
+  body('otp')
+    .isLength({ min: 6, max: 6 })
+    .withMessage('OTP must be exactly 6 digits')
+    .isNumeric()
+    .withMessage('OTP must contain only numbers'),
   passwordValidation(),
   body('confirmPassword')
     .custom((value, { req }) => {
@@ -90,6 +93,17 @@ export const resetPasswordValidation = [
       }
       return true;
     })
+];
+
+// OTP verification validation (without confirmPassword requirement)
+export const verifyOtpValidation = [
+  emailValidation(),
+  body('otp')
+    .isLength({ min: 6, max: 6 })
+    .withMessage('OTP must be exactly 6 digits')
+    .isNumeric()
+    .withMessage('OTP must contain only numbers'),
+  passwordValidation()
 ];
 
 // Change password validation
@@ -105,6 +119,14 @@ export const changePasswordValidation = [
       }
       return true;
     })
+];
+
+// Direct change password validation (without confirmPassword requirement)
+export const directChangePasswordValidation = [
+  body('currentPassword')
+    .notEmpty()
+    .withMessage('Current password is required'),
+  passwordValidation()
 ];
 
 // Query validation for user listing
@@ -137,4 +159,25 @@ export const mongoIdValidation = [
   param('id')
     .isMongoId()
     .withMessage('Invalid ID format')
+];
+
+// Password change OTP request validation
+export const passwordChangeOtpRequestValidation = [
+  body('currentPassword')
+    .notEmpty()
+    .withMessage('Current password is required')
+];
+
+// OTP and password change validation
+export const otpPasswordChangeValidation = [
+  body('otp')
+    .isLength({ min: 6, max: 6 })
+    .withMessage('OTP must be exactly 6 digits')
+    .isNumeric()
+    .withMessage('OTP must contain only numbers'),
+  body('newPassword')
+    .isLength({ min: 8 })
+    .withMessage('New password must be at least 8 characters long')
+    .matches(VALIDATION_PATTERNS.PASSWORD)
+    .withMessage('New password must contain at least one uppercase letter, one lowercase letter, one number, and one special character')
 ];

@@ -57,6 +57,11 @@ export const validationRules = {
     message: VALIDATION_MESSAGES.PASSWORDS_NOT_MATCH,
   }),
 
+  otp: (value) => ({
+    isValid: /^\d{6}$/.test(value),
+    message: 'OTP must be exactly 6 digits',
+  }),
+
   role: (value, allowedRoles) => ({
     isValid: allowedRoles.includes(value),
     message: `Role must be one of: ${allowedRoles.join(', ')}`,
@@ -140,6 +145,13 @@ export const validationSchemas = {
     email: [validationRules.required, validationRules.email],
   },
 
+  verifyForgotPasswordOtp: {
+    email: [validationRules.required, validationRules.email],
+    otp: [validationRules.required, validationRules.otp],
+    password: [validationRules.required, validationRules.password],
+    confirmPassword: [], // Handled separately
+  },
+
   resetPassword: {
     password: [validationRules.required, validationRules.password],
     confirmPassword: [], // Handled separately
@@ -203,6 +215,24 @@ export const validateRegistrationForm = (formData, allowedRoles = []) => {
  */
 export const validateForgotPasswordForm = (formData) => {
   return validateForm(formData, validationSchemas.forgotPassword);
+};
+
+/**
+ * Validate verify forgot password OTP form
+ * @param {Object} formData - Verify OTP form data
+ * @returns {Object} Validation result
+ */
+export const validateVerifyForgotPasswordOtpForm = (formData) => {
+  const schema = { ...validationSchemas.verifyForgotPasswordOtp };
+  
+  // Add password confirmation validation
+  if (formData.password && formData.confirmPassword) {
+    schema.confirmPassword = [
+      (value) => validationRules.confirmPassword(formData.password, value),
+    ];
+  }
+
+  return validateForm(formData, schema);
 };
 
 /**
