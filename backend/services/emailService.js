@@ -32,11 +32,11 @@ export class EmailService {
 
       // Verify transporter configuration
       await this.transporter.verify();
-      console.log('✅ Email transporter initialized successfully');
+      console.log('Email transporter initialized successfully');
       
       return this.transporter;
     } catch (error) {
-      console.error('❌ Email transporter initialization failed:', error.message);
+      console.error(' Email transporter initialization failed:', error.message);
       throw new AppError('Email service initialization failed', HTTP_STATUS.INTERNAL_SERVER_ERROR);
     }
   }
@@ -60,7 +60,7 @@ export class EmailService {
 
       const result = await this.transporter.sendMail(mailOptions);
       
-      console.log('📧 Email sent successfully:', {
+      console.log('Email sent successfully:', {
         to,
         subject,
         messageId: result.messageId
@@ -72,7 +72,7 @@ export class EmailService {
       };
 
     } catch (error) {
-      console.error('❌ Email sending failed:', error);
+      console.error('Email sending failed:', error);
       throw new AppError('Failed to send email', HTTP_STATUS.INTERNAL_SERVER_ERROR);
     }
   }

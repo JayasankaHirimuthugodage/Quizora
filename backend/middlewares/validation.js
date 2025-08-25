@@ -9,7 +9,7 @@ export const handleValidationErrors = (req, res, next) => {
   
   if (!errors.isEmpty()) {
     const validationErrors = errors.array();
-    console.log('❌ Validation Errors:', {
+    console.log('Validation Errors:', {
       path: req.path,
       method: req.method,
       errors: validationErrors,
