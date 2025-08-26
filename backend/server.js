@@ -81,13 +81,13 @@ const createDefaultAdmin = async () => {
 
       await admin.save();
       
-      console.log('Default admin user created');
-      console.log(` Email: ${admin.email}`);
-      console.log(` Password: ${defaultPassword}`);
-      console.log(' Please change the default password after first login');
+      console.log('✅ Default admin user created');
+      console.log(`📧 Email: ${admin.email}`);
+      console.log(`🔐 Password: ${defaultPassword}`);
+      console.log('⚠️  Please change the default password after first login');
     }
   } catch (error) {
-    console.error('Error creating default admin:', error.message);
+    console.error('❌ Error creating default admin:', error.message);
   }
 };
 
@@ -104,37 +104,37 @@ const initializeServer = async () => {
     
     // Start server
     app.listen(PORT, () => {
-      console.log(` Server running on http://localhost:${PORT}`);
-      console.log(` Environment: ${process.env.NODE_ENV || 'development'}`);
-      console.log(` API Documentation: http://localhost:${PORT}/api/health`);
+      console.log(`🚀 Server running on http://localhost:${PORT}`);
+      console.log(`🌍 Environment: ${process.env.NODE_ENV || 'development'}`);
+      console.log(`📊 API Documentation: http://localhost:${PORT}/api/health`);
     });
     
   } catch (error) {
-    console.error(' Server initialization failed:', error);
+    console.error('❌ Server initialization failed:', error);
     process.exit(1);
   }
 };
 
 // Handle unhandled promise rejections
 process.on('unhandledRejection', (err) => {
-  console.error(' Unhandled Promise Rejection:', err);
+  console.error('❌ Unhandled Promise Rejection:', err);
   process.exit(1);
 });
 
 // Handle uncaught exceptions
 process.on('uncaughtException', (err) => {
-  console.error(' Uncaught Exception:', err);
+  console.error('❌ Uncaught Exception:', err);
   process.exit(1);
 });
 
 // Graceful shutdown
 process.on('SIGTERM', () => {
-  console.log(' SIGTERM received. Shutting down gracefully...');
+  console.log('👋 SIGTERM received. Shutting down gracefully...');
   process.exit(0);
 });
 
 process.on('SIGINT', () => {
-  console.log(' SIGINT received. Shutting down gracefully...');
+  console.log('👋 SIGINT received. Shutting down gracefully...');
   process.exit(0);
 });
 
