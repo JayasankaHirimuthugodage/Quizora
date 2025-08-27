@@ -4,7 +4,8 @@ import {
   createUser, 
   updateUser, 
   deleteUser, 
-  getUserStats 
+  getUserStats,
+  getDegreeOptions
 } from '../controllers/userController.js';
 import { authenticate, authorize } from '../middleware/auth.js';
 
@@ -12,6 +13,9 @@ const router = express.Router();
 
 // All routes require authentication
 router.use(authenticate);
+
+// Get degree options (available to all authenticated users)
+router.get('/degrees', getDegreeOptions);
 
 // Admin only routes
 router.get('/', authorize('admin'), getUsers);
