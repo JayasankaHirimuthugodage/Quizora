@@ -1,6 +1,6 @@
 import Window from "../models/quizWindowModel.js";
 
-//get all products controller
+//get all windows controller
 const getWindows = async(req, res) => {
     try{
         const windows = await Window.find({});
@@ -10,7 +10,7 @@ const getWindows = async(req, res) => {
     }
 }
 
-//get one product controller
+//get one window controller
 const getWindow = async(req,res) => {
     try{
         const {id} = req.params; //take id from url
@@ -32,10 +32,49 @@ const createWindow = async(req,res) => {
 
 }
 
+//update product controller
+const updateWindow = async(req,res) => {
+    try{
+        const {id} = req.params;
+
+        const window = await Window.findByIdAndUpdate(id, req.body);
+
+        if(!window){
+            return res.status(404).json({message: "Product not found"});
+        }
+
+        const updateWindow = await Window.findById(id);
+        res.status(200).json(updateWindow)
+
+    }catch(error){
+        res.status(500).json({message: error.message});
+    }
+}
+
+//delete product controller
+const deleteWindow = async(req,res) => {
+    try{
+        const {id} = req.params; 
+
+        const window = await Window.findByIdAndDelete(id)
+
+        if(!window){
+            return res.status(404).json({message: "Window not found"});
+        }
+
+        res.status(200).json({message: "Window deleted successfully"});
+
+    }catch(error){
+        res.status(500).json({message: error.message});
+    }
+}
+
 const windowController = {
   createWindow,
   getWindows,
-  getWindow
+  getWindow,
+  updateWindow,
+  deleteWindow
 };
 
 export default windowController;
