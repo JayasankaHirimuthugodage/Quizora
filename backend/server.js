@@ -4,10 +4,12 @@ import cors from 'cors';
 import helmet from 'helmet';
 import mongooseConnection from './config/db.js';
 import routes from './routes/index.js';
+import windowRoutes from "./routes/windowRoutes.js";
 import { errorHandler, notFoundHandler } from './middlewares/errorHandler.js';
 import { generalRateLimit } from './middlewares/rateLimiter.js';
 import { User, USER_ROLES } from './models/index.js';
 import { generateRandomPassword } from './utils/helpers.js';
+import router from './routes/authRoutes.js';
 
 // Load environment variables
 dotenv.config();
@@ -42,6 +44,7 @@ app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
 // API routes
 app.use('/api', routes);
+app.use('/api/window', windowRoutes)
 
 // Root route
 app.get('/', (req, res) => {
