@@ -16,9 +16,11 @@ const UsersPage = () => {
   const [showModal, setShowModal] = useState(false);
   const [selectedUser, setSelectedUser] = useState(null);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [degreeOptions, setDegreeOptions] = useState([]);
 
   useEffect(() => {
     fetchUsers();
+    fetchDegreeOptions();
   }, [filters]);
 
   const fetchUsers = async () => {
@@ -35,11 +37,26 @@ const UsersPage = () => {
     }
   };
 
+  const fetchDegreeOptions = async () => {
+    try {
+      const response = await userService.getDegreeOptions();
+      setDegreeOptions(response.degrees);
+    } catch (err) {
+      console.error('Error fetching degrees:', err);
+    }
+  };
+
+  const getDegreeTitle = (code) => {
+    if (!code) return 'N/A';
+    const degree = degreeOptions.find(d => d.code === code);
+    return degree ? `${degree.code}: ${degree.title}` : code;
+  };
+
   const handleFilterChange = (key, value) => {
     setFilters(prev => ({
       ...prev,
       [key]: value,
-      page: 1 // Reset to first page when filtering
+      page: 1
     }));
   };
 
@@ -67,8 +84,8 @@ const UsersPage = () => {
       try {
         setIsDeleting(true);
         await userService.deleteUser(user._id);
-        await fetchUsers(); // Refresh the list
-        setError(''); // Clear any previous errors
+        await fetchUsers();
+        setError('');
       } catch (err) {
         setError(err.message);
       } finally {
@@ -110,12 +127,10 @@ const UsersPage = () => {
     const pages = [];
 
     if (totalPages <= 7) {
-      // Show all pages if 7 or fewer
       for (let i = 1; i <= totalPages; i++) {
         pages.push(i);
       }
     } else {
-      // Show first, last, and pages around current
       if (currentPage <= 4) {
         for (let i = 1; i <= 5; i++) pages.push(i);
         pages.push('...');
@@ -193,7 +208,7 @@ const UsersPage = () => {
               <input
                 type="text"
                 id="search"
-                placeholder="Search by name or email..."
+                placeholder="Search by name, email, or degree..."
                 className="block w-full px-3 py-2 pl-10 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
                 value={filters.search}
                 onChange={(e) => handleFilterChange('search', e.target.value)}
@@ -272,13 +287,13 @@ const UsersPage = () => {
                     Role
                   </th>
                   <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Academic Info
+                  </th>
+                  <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Status
                   </th>
                   <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Created
-                  </th>
-                  <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Last Login
                   </th>
                   <th scope="col" className="relative px-6 py-3">
                     <span className="sr-only">Actions</span>
@@ -310,6 +325,22 @@ const UsersPage = () => {
                         {user.role?.charAt(0)?.toUpperCase() + user.role?.slice(1)}
                       </span>
                     </td>
+                    <td className="px-6 py-4">
+                      {user.role === 'student' ? (
+                        <div className="text-sm">
+                          <div className="text-gray-900 font-medium">
+                            {getDegreeTitle(user.degreeTitle)}
+                          </div>
+                          {user.currentYear && user.currentSemester && (
+                            <div className="text-gray-500">
+                              Year {user.currentYear}, Semester {user.currentSemester}
+                            </div>
+                          )}
+                        </div>
+                      ) : (
+                        <span className="text-sm text-gray-500">N/A</span>
+                      )}
+                    </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${getStatusBadgeColor(user.isActive)}`}>
                         {user.isActive ? 'Active' : 'Inactive'}
@@ -317,9 +348,6 @@ const UsersPage = () => {
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                       {user.createdAt ? new Date(user.createdAt).toLocaleDateString() : 'N/A'}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                      {user.lastLogin ? new Date(user.lastLogin).toLocaleDateString() : 'Never'}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                       <div className="flex items-center justify-end space-x-2">
@@ -379,7 +407,7 @@ const UsersPage = () => {
                 </p>
               </div>
               <div>
-                <nav className="relative z-0 inline-flex rounded-md shadow-sm -space-x-px" aria-label="Pagination">
+                <nav className="relative z-0 inline-flex rounded-md shadow-sm -space-x-px">
                   <button
                     onClick={() => handlePageChange(pagination.page - 1)}
                     disabled={pagination.page <= 1}

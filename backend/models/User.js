@@ -29,6 +29,28 @@ const userSchema = new mongoose.Schema({
     enum: ['admin', 'lecturer', 'student'],
     default: 'student'
   },
+  // Student-specific fields
+  degreeTitle: {
+    type: String,
+    required: function() {
+      return this.role === 'student';
+    }
+  },
+  currentYear: {
+    type: Number,
+    min: [1, 'Year must be at least 1'],
+    max: [4, 'Year cannot exceed 4'],
+    required: function() {
+      return this.role === 'student';
+    }
+  },
+  currentSemester: {
+    type: Number,
+    enum: [1, 2],
+    required: function() {
+      return this.role === 'student';
+    }
+  },
   isActive: {
     type: Boolean,
     default: true

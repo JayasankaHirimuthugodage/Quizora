@@ -24,5 +24,10 @@ export const userService = {
   getUserStats: async () => {
     const response = await api.get('/users/stats');
     return response;
+  },
+
+  getDegreeOptions: async () => {
+    const response = await api.get('/users/degrees');
+    return response;
   }
 };
