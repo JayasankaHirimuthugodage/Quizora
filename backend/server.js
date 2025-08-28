@@ -4,24 +4,33 @@ import dotenv from 'dotenv';
 import mongoose from 'mongoose';
 import authRoutes from './routes/authRoutes.js';
 import userRoutes from './routes/userRoutes.js';
+import questionRoutes from './routes/questionRoutes.js'; // Updated import
 import User from './models/User.js';
-// import mongooseConnection from './config/db.js';
 import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
 import path from 'path';
-import questionRoutes from './routes/quetionRoutes.js';
 
 dotenv.config();
 
 const app = express();
 
-// Middleware
+// Security & middleware
+app.use(helmet());
 app.use(cors({
-  origin: process.env.FRONTEND_URL || 'http://localhost:3000',
+  origin: process.env.FRONTEND_URL?.split(',') || 'http://localhost:3000',
   credentials: true
 }));
-app.use(express.json());
+app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
+
+// Static files for uploaded images
+app.use('/uploads', express.static(path.resolve('uploads')));
+
+// Rate limiting (optional)
+app.use(rateLimit({ 
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  limit: 100 // limit each IP to 100 requests per windowMs
+}));
 
 // Database connection
 mongoose.connect(process.env.MONGO_URI)
@@ -60,47 +69,25 @@ mongoose.connection.once('open', () => {
 // Routes
 app.use('/api/auth', authRoutes);
 app.use('/api/users', userRoutes);
+app.use('/api/questions', questionRoutes); // Updated route
 
 // Health check
 app.get('/api/health', (req, res) => {
   res.json({ message: 'Quizora API is running', timestamp: new Date() });
 });
 
-// Error handling middleware
-app.use((err, req, res, next) => {
-  console.error(err.stack);
-  res.status(500).json({ message: 'Something went wrong!' });
-});
-
-
-// Security & parsers
-app.use(helmet());
-app.use(cors({ origin: process.env.FRONTEND_URL?.split(',') || '*' }));
-app.use(express.json({ limit: '10mb' }));
-app.use(express.urlencoded({ extended: true }));
-
-// Static for uploaded images
-app.use('/uploads', express.static(path.resolve('uploads')));
-
-// Rate limit (optional)
-app.use(rateLimit({ windowMs: 15 * 60 * 1000, limit: 100 }));
-
-// Routes
-app.use('/api/questions', questionRoutes);
-
-// 404
-app.use((req, res) => res.status(404).json({ message: 'Not found' }));
-
-// Error handler
-app.use((err, req, res, next) => {
-  console.error(err);
-  res.status(500).json({ message: err.message || 'Server error' });
-});
-
-
 // 404 handler
 app.use('*', (req, res) => {
   res.status(404).json({ message: 'Route not found' });
+});
+
+// Error handling middleware
+app.use((err, req, res, next) => {
+  console.error(err.stack);
+  res.status(500).json({ 
+    message: 'Something went wrong!',
+    error: process.env.NODE_ENV === 'development' ? err.message : undefined
+  });
 });
 
 const PORT = process.env.PORT || 5000;

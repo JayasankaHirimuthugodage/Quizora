@@ -6,6 +6,7 @@ import LoginPage from './pages/LoginPage';
 import AdminDashboard from './pages/admin/AdminDashboard';
 import UsersPage from './pages/admin/UsersPage';
 import LecturerDashboard from './pages/lecturer/LecturerDashboard';
+import QuestionManagement from './pages/lecturer/QuestionManagement';
 import StudentDashboard from './pages/student/StudentDashboard';
 
 function App() {
@@ -41,6 +42,7 @@ function App() {
                   <Layout>
                     <Routes>
                       <Route path="dashboard" element={<LecturerDashboard />} />
+                      <Route path="questions" element={<QuestionManagement />} />
                       <Route path="" element={<Navigate to="dashboard" replace />} />
                     </Routes>
                   </Layout>
