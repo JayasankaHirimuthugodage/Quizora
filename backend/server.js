@@ -5,6 +5,11 @@ import mongoose from 'mongoose';
 import authRoutes from './routes/authRoutes.js';
 import userRoutes from './routes/userRoutes.js';
 import User from './models/User.js';
+// import mongooseConnection from './config/db.js';
+import helmet from 'helmet';
+import rateLimit from 'express-rate-limit';
+import path from 'path';
+import questionRoutes from './routes/quetionRoutes.js';
 
 dotenv.config();
 
@@ -66,6 +71,32 @@ app.use((err, req, res, next) => {
   console.error(err.stack);
   res.status(500).json({ message: 'Something went wrong!' });
 });
+
+
+// Security & parsers
+app.use(helmet());
+app.use(cors({ origin: process.env.FRONTEND_URL?.split(',') || '*' }));
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ extended: true }));
+
+// Static for uploaded images
+app.use('/uploads', express.static(path.resolve('uploads')));
+
+// Rate limit (optional)
+app.use(rateLimit({ windowMs: 15 * 60 * 1000, limit: 100 }));
+
+// Routes
+app.use('/api/questions', questionRoutes);
+
+// 404
+app.use((req, res) => res.status(404).json({ message: 'Not found' }));
+
+// Error handler
+app.use((err, req, res, next) => {
+  console.error(err);
+  res.status(500).json({ message: err.message || 'Server error' });
+});
+
 
 // 404 handler
 app.use('*', (req, res) => {
