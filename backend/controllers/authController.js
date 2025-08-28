@@ -1,9 +1,10 @@
 import jwt from 'jsonwebtoken';
 import User from '../models/User.js';
 
-const generateToken = (id) => {
-  return jwt.sign({ id }, process.env.JWT_SECRET, {
-    expiresIn: process.env.JWT_EXPIRES_IN
+// Generate JWT token
+const generateToken = (userId) => {
+  return jwt.sign({ id: userId }, process.env.JWT_SECRET, {
+    expiresIn: process.env.JWT_EXPIRES_IN || '7d'
   });
 };
 
@@ -15,15 +16,16 @@ export const login = async (req, res) => {
       return res.status(400).json({ message: 'Email and password are required' });
     }
 
+    // Find user by email and include password for comparison
     const user = await User.findOne({ email }).select('+password');
     
     if (!user || !user.isActive) {
       return res.status(401).json({ message: 'Invalid credentials' });
     }
 
-    const isPasswordMatch = await user.comparePassword(password);
-    
-    if (!isPasswordMatch) {
+    // Check password
+    const isPasswordValid = await user.comparePassword(password);
+    if (!isPasswordValid) {
       return res.status(401).json({ message: 'Invalid credentials' });
     }
 
@@ -31,42 +33,52 @@ export const login = async (req, res) => {
     user.lastLogin = new Date();
     await user.save();
 
+    // Generate token
     const token = generateToken(user._id);
-    
+
+    // Remove password from response
+    const userResponse = user.toJSON();
+
     res.json({
       success: true,
+      message: 'Login successful',
       token,
-      user: {
-        id: user._id,
-        firstName: user.firstName,
-        lastName: user.lastName,
-        email: user.email,
-        role: user.role
-      }
+      user: userResponse
     });
   } catch (error) {
+    console.error('Login error:', error);
     res.status(500).json({ message: 'Server error', error: error.message });
   }
 };
 
 export const getProfile = async (req, res) => {
   try {
+    const user = await User.findById(req.user._id);
+    
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
     res.json({
       success: true,
-      user: req.user
+      user: user.toJSON()
     });
   } catch (error) {
+    console.error('Get profile error:', error);
     res.status(500).json({ message: 'Server error', error: error.message });
   }
 };
 
 export const logout = async (req, res) => {
   try {
+    // In a more complex implementation, you might want to blacklist the token
+    // For now, we'll just return success as the client will remove the token
     res.json({
       success: true,
       message: 'Logged out successfully'
     });
   } catch (error) {
+    console.error('Logout error:', error);
     res.status(500).json({ message: 'Server error', error: error.message });
   }
 };

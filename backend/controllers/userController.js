@@ -85,6 +85,7 @@ export const getUsers = async (req, res) => {
       }
     });
   } catch (error) {
+    console.error('Get users error:', error);
     res.status(500).json({ message: 'Server error', error: error.message });
   }
 };
@@ -138,12 +139,15 @@ export const createUser = async (req, res) => {
     const user = new User(userData);
     await user.save();
 
+    console.log('User created successfully:', user.email);
+
     res.status(201).json({
       success: true,
       message: 'User created successfully',
-      user
+      user: user.toJSON()
     });
   } catch (error) {
+    console.error('Create user error:', error);
     res.status(500).json({ message: 'Server error', error: error.message });
   }
 };
@@ -151,7 +155,9 @@ export const createUser = async (req, res) => {
 export const updateUser = async (req, res) => {
   try {
     const { id } = req.params;
-    const { firstName, lastName, email, role, isActive, degreeTitle, currentYear, currentSemester } = req.body;
+    const { firstName, lastName, email, role, isActive, degreeTitle, currentYear, currentSemester, password } = req.body;
+
+    console.log('Updating user:', id, 'Password provided:', !!password);
 
     const user = await User.findById(id);
     if (!user) {
@@ -185,34 +191,43 @@ export const updateUser = async (req, res) => {
       }
     }
 
-    const updateData = {
-      firstName: firstName || user.firstName,
-      lastName: lastName || user.lastName,
-      email: email || user.email,
-      role: role || user.role,
-      isActive: isActive !== undefined ? isActive : user.isActive
-    };
+    // Update basic fields
+    user.firstName = firstName || user.firstName;
+    user.lastName = lastName || user.lastName;
+    user.email = email || user.email;
+    user.role = role || user.role;
+    user.isActive = isActive !== undefined ? isActive : user.isActive;
+
+    // Handle password update - THIS IS THE CRITICAL FIX
+    if (password && password.trim() !== '') {
+      console.log('Updating password for user:', user.email);
+      user.password = password; // Set the new password - pre-save hook will hash it
+    }
 
     // Update student-specific fields
     if (role === 'student') {
-      updateData.degreeTitle = degreeTitle || user.degreeTitle;
-      updateData.currentYear = currentYear ? parseInt(currentYear) : user.currentYear;
-      updateData.currentSemester = currentSemester ? parseInt(currentSemester) : user.currentSemester;
+      user.degreeTitle = degreeTitle || user.degreeTitle;
+      user.currentYear = currentYear ? parseInt(currentYear) : user.currentYear;
+      user.currentSemester = currentSemester ? parseInt(currentSemester) : user.currentSemester;
     } else if (user.role === 'student' && role !== 'student') {
       // If changing from student to another role, clear student fields
-      updateData.degreeTitle = undefined;
-      updateData.currentYear = undefined;
-      updateData.currentSemester = undefined;
+      user.degreeTitle = undefined;
+      user.currentYear = undefined;
+      user.currentSemester = undefined;
     }
 
-    const updatedUser = await User.findByIdAndUpdate(id, updateData, { new: true });
+    // Use save() method to trigger pre-save hooks (including password hashing)
+    const updatedUser = await user.save();
+
+    console.log('User updated successfully:', updatedUser.email);
 
     res.json({
       success: true,
       message: 'User updated successfully',
-      user: updatedUser
+      user: updatedUser.toJSON()
     });
   } catch (error) {
+    console.error('Update user error:', error);
     res.status(500).json({ message: 'Server error', error: error.message });
   }
 };
@@ -232,11 +247,14 @@ export const deleteUser = async (req, res) => {
 
     await User.findByIdAndDelete(id);
 
+    console.log('User deleted successfully:', user.email);
+
     res.json({
       success: true,
       message: 'User deleted successfully'
     });
   } catch (error) {
+    console.error('Delete user error:', error);
     res.status(500).json({ message: 'Server error', error: error.message });
   }
 };
@@ -265,6 +283,7 @@ export const getUserStats = async (req, res) => {
       }
     });
   } catch (error) {
+    console.error('Get user stats error:', error);
     res.status(500).json({ message: 'Server error', error: error.message });
   }
 };
@@ -277,6 +296,7 @@ export const getDegreeOptions = async (req, res) => {
       degrees: DEGREE_OPTIONS
     });
   } catch (error) {
+    console.error('Get degree options error:', error);
     res.status(500).json({ message: 'Server error', error: error.message });
   }
 };
