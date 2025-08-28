@@ -1,9 +1,8 @@
 import React, { useState, useEffect } from "react";
 import { Plus, Trash2, Save, X, AlertCircle } from "lucide-react";
+import { questionService } from "../../services/questionService";
 
-const API_BASE = process.env.REACT_APP_API_URL || "http://localhost:5001";
-
-export default function QuestionForm({ question, onQuestionCreated }) {
+export default function QuestionForm({ question, module, onQuestionCreated }) {
   const [formData, setFormData] = useState({
     type: "MCQ",
     questionText: "",
@@ -15,9 +14,6 @@ export default function QuestionForm({ question, onQuestionCreated }) {
     ],
     answer: "",
     tags: "",
-    moduleCode: "",
-    moduleYear: 1,
-    moduleSemester: 1,
     difficulty: "Medium",
   });
 
@@ -39,9 +35,6 @@ export default function QuestionForm({ question, onQuestionCreated }) {
     { value: "Hard", label: "Hard" },
   ];
 
-  const moduleYears = [1, 2, 3, 4];
-  const moduleSemesters = [1, 2];
-
   // Initialize form with existing question data if editing
   useEffect(() => {
     if (question) {
@@ -60,15 +53,12 @@ export default function QuestionForm({ question, onQuestionCreated }) {
               ],
         answer: question.answer || "",
         tags: question.tags ? question.tags.join(", ") : "",
-        moduleCode: question.moduleCode || "",
-        moduleYear: question.moduleYear || 1,
-        moduleSemester: question.moduleSemester || 1,
         difficulty: question.difficulty || "Medium",
       });
 
       // Set existing image preview if available
       if (question.image) {
-        setImagePreview(`${API_BASE}/uploads/${question.image}`);
+        setImagePreview(`${process.env.REACT_APP_API_URL || 'http://localhost:5001'}/uploads/${question.image}`);
       }
     } else {
       setIsEditMode(false);
@@ -84,9 +74,6 @@ export default function QuestionForm({ question, onQuestionCreated }) {
         ],
         answer: "",
         tags: "",
-        moduleCode: "",
-        moduleYear: 1,
-        moduleSemester: 1,
         difficulty: "Medium",
       });
       setImagePreview(null);
@@ -190,10 +177,6 @@ export default function QuestionForm({ question, onQuestionCreated }) {
       newErrors.questionText = "Question text is required";
     }
 
-    if (!formData.moduleCode.trim()) {
-      newErrors.moduleCode = "Module code is required";
-    }
-
     // MCQ specific validation
     if (formData.type === "MCQ") {
       const validOptions = formData.mcqOptions.filter((o) => o.text.trim());
@@ -225,9 +208,6 @@ export default function QuestionForm({ question, onQuestionCreated }) {
       ],
       answer: "",
       tags: "",
-      moduleCode: "",
-      moduleYear: 1,
-      moduleSemester: 1,
       difficulty: "Medium",
     });
     setImagePreview(null);
@@ -251,10 +231,13 @@ export default function QuestionForm({ question, onQuestionCreated }) {
     const submitData = new FormData();
     submitData.append("type", formData.type);
     submitData.append("questionText", formData.questionText.trim());
-    submitData.append("moduleCode", formData.moduleCode.trim().toUpperCase());
-    submitData.append("moduleYear", formData.moduleYear.toString());
-    submitData.append("moduleSemester", formData.moduleSemester.toString());
     submitData.append("difficulty", formData.difficulty);
+
+    // Use module information automatically
+    submitData.append("moduleId", module._id);
+    submitData.append("moduleCode", module.moduleCode);
+    submitData.append("moduleYear", module.moduleYear.toString());
+    submitData.append("moduleSemester", module.moduleSemester.toString());
 
     if (formData.tags.trim()) {
       const tagsArray = formData.tags
@@ -281,40 +264,18 @@ export default function QuestionForm({ question, onQuestionCreated }) {
 
     setSubmitting(true);
     try {
-      const token = localStorage.getItem("token");
-      const url = isEditMode
-        ? `${API_BASE}/api/questions/${question._id}`
-        : `${API_BASE}/api/questions`;
-
-      const method = isEditMode ? "PUT" : "POST";
-
-      const res = await fetch(url, {
-        method,
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-        body: submitData,
-      });
-
-      const data = await res.json();
-
-      if (!res.ok) {
-        throw new Error(data.message || `Request failed (${res.status})`);
-      }
-
-      alert(
-        isEditMode
-          ? "Question updated successfully!"
-          : "Question created successfully!"
-      );
-
-      if (!isEditMode) {
+      if (isEditMode) {
+        await questionService.updateQuestion(question._id, submitData);
+        alert("Question updated successfully!");
+      } else {
+        await questionService.createQuestion(submitData);
+        alert("Question created successfully!");
         resetForm();
       }
 
-      // Callback to refresh questions list if provided
+      // Callback to refresh questions list
       if (onQuestionCreated) {
-        onQuestionCreated(data.question);
+        onQuestionCreated();
       }
     } catch (error) {
       console.error("Error saving question:", error);
@@ -327,86 +288,29 @@ export default function QuestionForm({ question, onQuestionCreated }) {
   return (
     <div className="max-w-4xl mx-auto bg-white rounded-lg shadow-lg">
       <div className="p-6 border-b border-gray-200">
-        <h2 className="text-2xl font-bold text-gray-800">
-          {isEditMode ? "Edit Question" : "Create New Question"}
-        </h2>
-        <p className="text-sm text-gray-600 mt-1">
-          {isEditMode
-            ? "Update your question details"
-            : "Add questions to your question bank"}
-        </p>
+        <div className="flex justify-between items-start">
+          <div>
+            <h2 className="text-2xl font-bold text-gray-800">
+              {isEditMode ? "Edit Question" : "Create New Question"}
+            </h2>
+            <p className="text-sm text-gray-600 mt-1">
+              {isEditMode
+                ? "Update your question details"
+                : "Add questions to your question bank"}
+            </p>
+          </div>
+          <div className="bg-blue-50 px-4 py-2 rounded-lg">
+            <p className="text-sm font-medium text-blue-800">
+              {module.moduleCode} - {module.moduleName}
+            </p>
+            <p className="text-xs text-blue-600">
+              Year {module.moduleYear} • Semester {module.moduleSemester}
+            </p>
+          </div>
+        </div>
       </div>
 
       <form onSubmit={handleSubmit} className="p-6 space-y-6">
-        {/* Module Information */}
-        <div className="bg-blue-50 p-4 rounded-lg">
-          <h3 className="text-lg font-medium text-gray-800 mb-4">
-            Module Information
-          </h3>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Module Code *
-              </label>
-              <input
-                type="text"
-                value={formData.moduleCode}
-                onChange={(e) =>
-                  handleInputChange("moduleCode", e.target.value)
-                }
-                placeholder="e.g., CS101"
-                className={`w-full p-3 border rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
-                  errors.moduleCode ? "border-red-300" : "border-gray-300"
-                }`}
-              />
-              {errors.moduleCode && (
-                <p className="mt-1 text-sm text-red-600 flex items-center">
-                  <AlertCircle size={16} className="mr-1" />
-                  {errors.moduleCode}
-                </p>
-              )}
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Year *
-              </label>
-              <select
-                value={formData.moduleYear}
-                onChange={(e) =>
-                  handleInputChange("moduleYear", parseInt(e.target.value))
-                }
-                className="w-full p-3 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              >
-                {moduleYears.map((year) => (
-                  <option key={year} value={year}>
-                    Year {year}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Semester *
-              </label>
-              <select
-                value={formData.moduleSemester}
-                onChange={(e) =>
-                  handleInputChange("moduleSemester", parseInt(e.target.value))
-                }
-                className="w-full p-3 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              >
-                {moduleSemesters.map((semester) => (
-                  <option key={semester} value={semester}>
-                    Semester {semester}
-                  </option>
-                ))}
-              </select>
-            </div>
-          </div>
-        </div>
-
         {/* Question Details */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           <div>
