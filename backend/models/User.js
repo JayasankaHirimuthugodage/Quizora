@@ -66,16 +66,41 @@ const userSchema = new mongoose.Schema({
   timestamps: true
 });
 
-// Hash password before saving
+// Hash password before saving - CRITICAL FOR PASSWORD UPDATES
 userSchema.pre('save', async function(next) {
-  if (!this.isModified('password')) return next();
-  this.password = await bcrypt.hash(this.password, 12);
-  next();
+  // Only hash the password if it has been modified (or is new)
+  if (!this.isModified('password')) {
+    console.log('Password not modified, skipping hash for user:', this.email);
+    return next();
+  }
+
+  try {
+    console.log('Hashing password for user:', this.email);
+    // Hash password with cost of 12
+    this.password = await bcrypt.hash(this.password, 12);
+    console.log('Password hashed successfully for user:', this.email);
+    next();
+  } catch (error) {
+    console.error('Error hashing password for user:', this.email, error);
+    next(error);
+  }
 });
 
 // Compare password method
 userSchema.methods.comparePassword = async function(candidatePassword) {
-  return await bcrypt.compare(candidatePassword, this.password);
+  try {
+    if (!this.password) {
+      console.error('No password found for user:', this.email);
+      return false;
+    }
+    
+    const isMatch = await bcrypt.compare(candidatePassword, this.password);
+    console.log('Password comparison for user:', this.email, 'Result:', isMatch);
+    return isMatch;
+  } catch (error) {
+    console.error('Error comparing password for user:', this.email, error);
+    return false;
+  }
 };
 
 // Get full name
@@ -83,11 +108,19 @@ userSchema.virtual('fullName').get(function() {
   return `${this.firstName} ${this.lastName}`;
 });
 
-// Transform output
+// Transform output - ensure password is never returned in JSON
 userSchema.methods.toJSON = function() {
   const user = this.toObject();
   delete user.password;
   return user;
 };
+
+// Ensure password field is not selected by default
+userSchema.set('toJSON', { 
+  transform: function(doc, ret) {
+    delete ret.password;
+    return ret;
+  }
+});
 
 export default mongoose.model('User', userSchema);

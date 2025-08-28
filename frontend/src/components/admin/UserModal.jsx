@@ -28,7 +28,7 @@ const UserModal = ({ user, onClose }) => {
         firstName: user.firstName,
         lastName: user.lastName,
         email: user.email,
-        password: '',
+        password: '', // Always empty for editing
         role: user.role,
         degreeTitle: user.degreeTitle || '',
         currentYear: user.currentYear || 1,
@@ -78,42 +78,63 @@ const UserModal = ({ user, onClose }) => {
     setError('');
 
     try {
+      // Basic validation
+      if (!formData.firstName || !formData.lastName || !formData.email || !formData.role) {
+        throw new Error('Please fill in all required fields');
+      }
+
       const submitData = {
-        firstName: formData.firstName,
-        lastName: formData.lastName,
-        email: formData.email,
+        firstName: formData.firstName.trim(),
+        lastName: formData.lastName.trim(),
+        email: formData.email.trim().toLowerCase(),
         role: formData.role,
         isActive: formData.isActive
       };
 
-      if (formData.password.trim()) {
-        submitData.password = formData.password;
+      // Handle password - CRITICAL FIX
+      if (formData.password && formData.password.trim()) {
+        console.log('Password provided, will be updated');
+        submitData.password = formData.password.trim();
+      } else if (!user) {
+        // New user must have password
+        throw new Error('Password is required for new users');
+      } else {
+        console.log('No password provided for existing user, password will remain unchanged');
       }
 
+      // Add student-specific fields if needed
       if (formData.role === 'student') {
         if (!formData.degreeTitle) {
           throw new Error('Degree title is required for students');
         }
+        if (!formData.currentYear || !formData.currentSemester) {
+          throw new Error('Current year and semester are required for students');
+        }
+        
         submitData.degreeTitle = formData.degreeTitle;
         submitData.currentYear = formData.currentYear;
         submitData.currentSemester = formData.currentSemester;
       }
 
+      console.log('Submitting user data:', {
+        ...submitData,
+        password: submitData.password ? '[PROVIDED]' : '[NOT PROVIDED]'
+      });
+
+      let response;
       if (user) {
-        if (!submitData.password) {
-          delete submitData.password;
-        }
-        await userService.updateUser(user._id, submitData);
+        console.log('Updating existing user with ID:', user._id);
+        response = await userService.updateUser(user._id, submitData);
       } else {
-        if (!submitData.password) {
-          throw new Error('Password is required for new users');
-        }
-        await userService.createUser(submitData);
+        console.log('Creating new user');
+        response = await userService.createUser(submitData);
       }
-      
-      onClose(true);
+
+      console.log('User operation successful:', response);
+      onClose(true); // Refresh the parent component
     } catch (err) {
-      setError(err.message);
+      console.error('User operation failed:', err);
+      setError(err.message || 'An error occurred');
     } finally {
       setLoading(false);
     }
@@ -204,7 +225,7 @@ const UserModal = ({ user, onClose }) => {
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <label htmlFor="firstName" className="block text-sm font-medium text-gray-700 mb-2">
-                      First Name
+                      First Name *
                     </label>
                     <input
                       type="text"
@@ -219,7 +240,7 @@ const UserModal = ({ user, onClose }) => {
                   </div>
                   <div>
                     <label htmlFor="lastName" className="block text-sm font-medium text-gray-700 mb-2">
-                      Last Name
+                      Last Name *
                     </label>
                     <input
                       type="text"
@@ -236,7 +257,7 @@ const UserModal = ({ user, onClose }) => {
 
                 <div className="mt-4">
                   <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-2">
-                    Email Address
+                    Email Address *
                   </label>
                   <input
                     type="email"
@@ -252,18 +273,27 @@ const UserModal = ({ user, onClose }) => {
 
                 <div className="mt-4">
                   <label htmlFor="password" className="block text-sm font-medium text-gray-700 mb-2">
-                    Password {user && <span className="text-gray-500">(leave blank to keep current)</span>}
+                    Password {user ? (
+                      <span className="text-gray-500 font-normal">(leave blank to keep current password)</span>
+                    ) : (
+                      <span className="text-red-500">*</span>
+                    )}
                   </label>
                   <input
                     type="password"
                     id="password"
                     name="password"
                     className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
-                    placeholder={user ? "Leave blank to keep current password" : "Enter password"}
+                    placeholder={user ? "Enter new password to update" : "Enter password"}
                     value={formData.password}
                     onChange={handleChange}
                     required={!user}
                   />
+                  {user && (
+                    <p className="text-xs text-gray-500 mt-1">
+                      Only fill this field if you want to change the user's password
+                    </p>
+                  )}
                 </div>
               </div>
 
@@ -278,7 +308,7 @@ const UserModal = ({ user, onClose }) => {
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <label htmlFor="role" className="block text-sm font-medium text-gray-700 mb-2">
-                      User Role
+                      User Role *
                     </label>
                     <select
                       id="role"
@@ -324,7 +354,7 @@ const UserModal = ({ user, onClose }) => {
                   <div className="space-y-4">
                     <div>
                       <label htmlFor="degreeTitle" className="block text-sm font-medium text-gray-700 mb-2">
-                        Degree Program
+                        Degree Program *
                       </label>
                       {loadingDegrees ? (
                         <div className="w-full px-4 py-3 border border-gray-300 rounded-xl bg-gray-100 flex items-center">
@@ -357,7 +387,7 @@ const UserModal = ({ user, onClose }) => {
                     <div className="grid grid-cols-2 gap-4">
                       <div>
                         <label htmlFor="currentYear" className="block text-sm font-medium text-gray-700 mb-2">
-                          Current Year
+                          Current Year *
                         </label>
                         <select
                           id="currentYear"
@@ -375,7 +405,7 @@ const UserModal = ({ user, onClose }) => {
                       </div>
                       <div>
                         <label htmlFor="currentSemester" className="block text-sm font-medium text-gray-700 mb-2">
-                          Current Semester
+                          Current Semester *
                         </label>
                         <select
                           id="currentSemester"
@@ -399,7 +429,8 @@ const UserModal = ({ user, onClose }) => {
                 <button
                   type="button"
                   onClick={() => onClose(false)}
-                  className="px-6 py-3 border border-gray-300 rounded-xl text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-all duration-200"
+                  disabled={loading}
+                  className="px-6 py-3 border border-gray-300 rounded-xl text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   Cancel
                 </button>
