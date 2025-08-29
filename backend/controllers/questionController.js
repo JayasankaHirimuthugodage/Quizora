@@ -1,88 +1,102 @@
-import * as questionService from '../services/questionService.js';
+import Question from '../models/question.js';
+import Module from '../models/Module.js';
+import path from 'path';
+import fs from 'fs';
 
-// Helper function to parse JSON safely
-const parseMaybeJSON = (value, fallback) => {
-  if (value === undefined || value === null || value === '') return fallback;
-  if (Array.isArray(value) || typeof value === 'object') return value;
-  try { 
-    return JSON.parse(value); 
-  } catch { 
-    return fallback; 
-  }
-};
-
-// Create a new question (lecturer only)
 export const createQuestion = async (req, res) => {
   try {
-    // Extract and validate required fields
     const { 
       type, 
       questionText, 
-      answer, 
-      tags,
+      moduleId,
       moduleCode,
       moduleYear,
       moduleSemester,
-      difficulty 
+      difficulty = 'Medium',
+      tags,
+      options,
+      answer,
+      equations
     } = req.body;
 
     // Validate required fields
-    if (!type || !questionText || !moduleCode || !moduleYear || !moduleSemester) {
-      return res.status(400).json({ 
-        message: 'Type, question text, module code, year, and semester are required' 
-      });
+    if (!type || !questionText || !moduleId) {
+      return res.status(400).json({ message: 'Question type, text, and module are required' });
     }
 
-    // Validate module year and semester
-    const year = parseInt(moduleYear);
-    const semester = parseInt(moduleSemester);
-    
-    if (year < 1 || year > 4) {
-      return res.status(400).json({ 
-        message: 'Module year must be between 1 and 4' 
-      });
-    }
-    
-    if (semester !== 1 && semester !== 2) {
-      return res.status(400).json({ 
-        message: 'Module semester must be 1 or 2' 
-      });
-    }
+    // Verify module exists and belongs to the lecturer
+    const module = await Module.findOne({ 
+      _id: moduleId, 
+      createdBy: req.user._id,
+      isActive: true 
+    });
 
-    // Parse options and equations
-    const options = parseMaybeJSON(req.body.options || req.body.mcqOptions, []);
-    const equations = parseMaybeJSON(req.body.equations, []);
-
-    // Validate MCQ options if type is MCQ
-    if (type === 'MCQ') {
-      const validOptions = options.filter(opt => opt.text && opt.text.trim());
-      if (validOptions.length < 2) {
-        return res.status(400).json({ 
-          message: 'MCQ questions must have at least 2 options' 
-        });
-      }
-      if (!validOptions.some(opt => opt.isCorrect)) {
-        return res.status(400).json({ 
-          message: 'MCQ questions must have at least one correct answer' 
-        });
-      }
+    if (!module) {
+      return res.status(404).json({ message: 'Module not found or access denied' });
     }
 
     const questionData = {
       type,
       questionText: questionText.trim(),
-      options: type === 'MCQ' ? options : [],
-      answer: type !== 'MCQ' ? (answer || '').trim() : '',
-      equations,
-      tags: parseMaybeJSON(tags, []),
-      moduleCode: moduleCode.trim().toUpperCase(),
-      moduleYear: year,
-      moduleSemester: semester,
-      difficulty: difficulty || 'Medium',
-      image: req.file?.filename || null,
+      moduleId: module._id,
+      moduleCode: module.moduleCode,
+      moduleYear: module.moduleYear,
+      moduleSemester: module.moduleSemester,
+      difficulty,
+      createdBy: req.user._id
     };
 
-    const question = await questionService.createQuestion(questionData, req.user._id);
+    // Handle image upload
+    if (req.file) {
+      questionData.image = req.file.filename;
+    }
+
+    // Handle tags
+    if (tags) {
+      try {
+        questionData.tags = typeof tags === 'string' ? JSON.parse(tags) : tags;
+      } catch (e) {
+        questionData.tags = [];
+      }
+    }
+
+    // Handle equations
+    if (equations) {
+      try {
+        questionData.equations = typeof equations === 'string' ? JSON.parse(equations) : equations;
+      } catch (e) {
+        questionData.equations = [];
+      }
+    }
+
+    // Handle MCQ options or structured/essay answer
+    if (type === 'MCQ') {
+      if (!options) {
+        return res.status(400).json({ message: 'MCQ options are required' });
+      }
+      try {
+        const parsedOptions = typeof options === 'string' ? JSON.parse(options) : options;
+        if (!Array.isArray(parsedOptions) || parsedOptions.length < 2) {
+          return res.status(400).json({ message: 'At least 2 options are required for MCQ' });
+        }
+        if (!parsedOptions.some(opt => opt.isCorrect)) {
+          return res.status(400).json({ message: 'At least one correct option is required' });
+        }
+        questionData.options = parsedOptions;
+      } catch (e) {
+        return res.status(400).json({ message: 'Invalid options format' });
+      }
+    } else {
+      if (!answer) {
+        return res.status(400).json({ message: 'Answer is required for structured/essay questions' });
+      }
+      questionData.answer = answer.trim();
+    }
+
+    const question = new Question(questionData);
+    await question.save();
+
+    await question.populate('createdBy', 'firstName lastName');
 
     res.status(201).json({
       success: true,
@@ -90,125 +104,159 @@ export const createQuestion = async (req, res) => {
       question
     });
   } catch (error) {
-    console.error('Error creating question:', error);
-    res.status(500).json({ 
-      message: 'Server error', 
-      error: error.message 
-    });
+    console.error('Create question error:', error);
+    res.status(500).json({ message: 'Server error', error: error.message });
   }
 };
 
-// Get all questions for the authenticated lecturer
-export const getQuestions = async (req, res) => {
+export const getQuestionsByModule = async (req, res) => {
   try {
-    const lecturerId = req.user._id;
-    const filters = {
-      moduleCode: req.query.moduleCode,
-      moduleYear: req.query.moduleYear,
-      moduleSemester: req.query.moduleSemester,
-      type: req.query.type,
-      difficulty: req.query.difficulty,
-      search: req.query.search
+    const { moduleId } = req.params;
+    const { search, type, difficulty } = req.query;
+
+    // Verify module access
+    const module = await Module.findOne({ 
+      _id: moduleId, 
+      createdBy: req.user._id,
+      isActive: true 
+    });
+
+    if (!module) {
+      return res.status(404).json({ message: 'Module not found or access denied' });
+    }
+
+    const query = {
+      moduleId: moduleId,
+      createdBy: req.user._id,
+      isActive: true
     };
 
-    const questions = await questionService.getQuestionsByLecturer(lecturerId, filters);
+    if (search) {
+      query.$or = [
+        { questionText: { $regex: search, $options: 'i' } },
+        { tags: { $in: [new RegExp(search, 'i')] } }
+      ];
+    }
+
+    if (type) query.type = type;
+    if (difficulty) query.difficulty = difficulty;
+
+    const questions = await Question.find(query)
+      .populate('createdBy', 'firstName lastName')
+      .sort({ createdAt: -1 });
 
     res.json({
       success: true,
       questions,
-      count: questions.length
+      module: {
+        _id: module._id,
+        moduleCode: module.moduleCode,
+        moduleName: module.moduleName,
+        moduleYear: module.moduleYear,
+        moduleSemester: module.moduleSemester
+      }
     });
   } catch (error) {
-    console.error('Error fetching questions:', error);
-    res.status(500).json({ 
-      message: 'Server error', 
-      error: error.message 
-    });
+    console.error('Get questions by module error:', error);
+    res.status(500).json({ message: 'Server error', error: error.message });
   }
 };
 
-// Get a single question by ID
-export const getQuestionById = async (req, res) => {
+export const getQuestions = async (req, res) => {
   try {
-    const { id } = req.params;
-    const lecturerId = req.user._id;
-
-    const question = await questionService.getQuestionById(id, lecturerId);
-
-    if (!question) {
-      return res.status(404).json({ 
-        message: 'Question not found or access denied' 
-      });
+    const { moduleCode, moduleYear, moduleSemester, search, type, difficulty } = req.query;
+    
+    const query = { createdBy: req.user._id, isActive: true };
+    
+    if (moduleCode) query.moduleCode = moduleCode;
+    if (moduleYear) query.moduleYear = parseInt(moduleYear);
+    if (moduleSemester) query.moduleSemester = parseInt(moduleSemester);
+    if (type) query.type = type;
+    if (difficulty) query.difficulty = difficulty;
+    
+    if (search) {
+      query.$or = [
+        { questionText: { $regex: search, $options: 'i' } },
+        { tags: { $in: [new RegExp(search, 'i')] } }
+      ];
     }
+
+    const questions = await Question.find(query)
+      .populate('createdBy', 'firstName lastName')
+      .sort({ createdAt: -1 });
 
     res.json({
       success: true,
-      question
+      questions
     });
   } catch (error) {
-    console.error('Error fetching question:', error);
-    res.status(500).json({ 
-      message: 'Server error', 
-      error: error.message 
-    });
+    console.error('Get questions error:', error);
+    res.status(500).json({ message: 'Server error', error: error.message });
   }
 };
 
-// Update a question
 export const updateQuestion = async (req, res) => {
   try {
     const { id } = req.params;
-    const lecturerId = req.user._id;
-
-    // Build update data
     const updateData = { ...req.body };
 
-    // Parse JSON fields if they exist
-    if (req.body.options) {
-      updateData.options = parseMaybeJSON(req.body.options, []);
+    const question = await Question.findOne({ 
+      _id: id, 
+      createdBy: req.user._id,
+      isActive: true 
+    });
+
+    if (!question) {
+      return res.status(404).json({ message: 'Question not found' });
     }
-    if (req.body.equations) {
-      updateData.equations = parseMaybeJSON(req.body.equations, []);
-    }
-    if (req.body.tags) {
-      updateData.tags = parseMaybeJSON(req.body.tags, []);
-    }
+
+    // Handle image update
     if (req.file) {
+      // Delete old image if exists
+      if (question.image) {
+        const oldImagePath = path.join('uploads', question.image);
+        if (fs.existsSync(oldImagePath)) {
+          fs.unlinkSync(oldImagePath);
+        }
+      }
       updateData.image = req.file.filename;
     }
 
-    // Validate module data if provided
-    if (updateData.moduleYear) {
-      const year = parseInt(updateData.moduleYear);
-      if (year < 1 || year > 4) {
-        return res.status(400).json({ 
-          message: 'Module year must be between 1 and 4' 
-        });
+    // Handle tags
+    if (updateData.tags) {
+      try {
+        updateData.tags = typeof updateData.tags === 'string' ? 
+          JSON.parse(updateData.tags) : updateData.tags;
+      } catch (e) {
+        updateData.tags = question.tags;
       }
-      updateData.moduleYear = year;
     }
 
-    if (updateData.moduleSemester) {
-      const semester = parseInt(updateData.moduleSemester);
-      if (semester !== 1 && semester !== 2) {
-        return res.status(400).json({ 
-          message: 'Module semester must be 1 or 2' 
-        });
+    // Handle equations
+    if (updateData.equations) {
+      try {
+        updateData.equations = typeof updateData.equations === 'string' ? 
+          JSON.parse(updateData.equations) : updateData.equations;
+      } catch (e) {
+        updateData.equations = question.equations;
       }
-      updateData.moduleSemester = semester;
     }
 
-    if (updateData.moduleCode) {
-      updateData.moduleCode = updateData.moduleCode.trim().toUpperCase();
+    // Handle MCQ options
+    if (updateData.options) {
+      try {
+        updateData.options = typeof updateData.options === 'string' ? 
+          JSON.parse(updateData.options) : updateData.options;
+      } catch (e) {
+        updateData.options = question.options;
+      }
     }
 
-    const updatedQuestion = await questionService.updateQuestion(id, updateData, lecturerId);
-
-    if (!updatedQuestion) {
-      return res.status(404).json({ 
-        message: 'Question not found or access denied' 
-      });
-    }
+    const updatedQuestion = await Question.findByIdAndUpdate(
+      id,
+      { ...updateData, updatedAt: new Date() },
+      { new: true, runValidators: true }
+    ).populate('createdBy', 'firstName lastName');
 
     res.json({
       success: true,
@@ -216,26 +264,35 @@ export const updateQuestion = async (req, res) => {
       question: updatedQuestion
     });
   } catch (error) {
-    console.error('Error updating question:', error);
-    res.status(500).json({ 
-      message: 'Server error', 
-      error: error.message 
-    });
+    console.error('Update question error:', error);
+    res.status(500).json({ message: 'Server error', error: error.message });
   }
 };
 
-// Delete a question (soft delete)
 export const deleteQuestion = async (req, res) => {
   try {
     const { id } = req.params;
-    const lecturerId = req.user._id;
 
-    const deletedQuestion = await questionService.deleteQuestion(id, lecturerId);
+    const question = await Question.findOne({ 
+      _id: id, 
+      createdBy: req.user._id,
+      isActive: true 
+    });
 
-    if (!deletedQuestion) {
-      return res.status(404).json({ 
-        message: 'Question not found or access denied' 
-      });
+    if (!question) {
+      return res.status(404).json({ message: 'Question not found' });
+    }
+
+    // Soft delete
+    question.isActive = false;
+    await question.save();
+
+    // Delete associated image file
+    if (question.image) {
+      const imagePath = path.join('uploads', question.image);
+      if (fs.existsSync(imagePath)) {
+        fs.unlinkSync(imagePath);
+      }
     }
 
     res.json({
@@ -243,48 +300,92 @@ export const deleteQuestion = async (req, res) => {
       message: 'Question deleted successfully'
     });
   } catch (error) {
-    console.error('Error deleting question:', error);
-    res.status(500).json({ 
-      message: 'Server error', 
-      error: error.message 
-    });
+    console.error('Delete question error:', error);
+    res.status(500).json({ message: 'Server error', error: error.message });
   }
 };
 
-// Get lecturer's question statistics
+export const getQuestionById = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const question = await Question.findOne({ 
+      _id: id, 
+      createdBy: req.user._id,
+      isActive: true 
+    }).populate('createdBy', 'firstName lastName');
+
+    if (!question) {
+      return res.status(404).json({ message: 'Question not found' });
+    }
+
+    res.json({
+      success: true,
+      question
+    });
+  } catch (error) {
+    console.error('Get question by ID error:', error);
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+};
+
 export const getQuestionStats = async (req, res) => {
   try {
-    const lecturerId = req.user._id;
-    const stats = await questionService.getLecturerQuestionStats(lecturerId);
+    const stats = await Question.aggregate([
+      { $match: { createdBy: req.user._id, isActive: true } },
+      {
+        $group: {
+          _id: null,
+          totalQuestions: { $sum: 1 },
+          mcqCount: { $sum: { $cond: [{ $eq: ['$type', 'MCQ'] }, 1, 0] } },
+          structuredCount: { $sum: { $cond: [{ $eq: ['$type', 'Structured'] }, 1, 0] } },
+          essayCount: { $sum: { $cond: [{ $eq: ['$type', 'Essay'] }, 1, 0] } },
+          byDifficulty: {
+            $push: '$difficulty'
+          }
+        }
+      }
+    ]);
+
+    const moduleStats = await Question.aggregate([
+      { $match: { createdBy: req.user._id, isActive: true } },
+      {
+        $group: {
+          _id: { moduleCode: '$moduleCode', moduleId: '$moduleId' },
+          count: { $sum: 1 }
+        }
+      }
+    ]);
 
     res.json({
       success: true,
-      stats
+      stats: {
+        totalQuestions: stats[0]?.totalQuestions || 0,
+        mcqCount: stats[0]?.mcqCount || 0,
+        structuredCount: stats[0]?.structuredCount || 0,
+        essayCount: stats[0]?.essayCount || 0,
+        moduleStats
+      }
     });
   } catch (error) {
-    console.error('Error fetching question stats:', error);
-    res.status(500).json({ 
-      message: 'Server error', 
-      error: error.message 
-    });
+    console.error('Get question stats error:', error);
+    res.status(500).json({ message: 'Server error', error: error.message });
   }
 };
 
-// Get lecturer's modules
 export const getLecturerModules = async (req, res) => {
   try {
-    const lecturerId = req.user._id;
-    const modules = await questionService.getLecturerModules(lecturerId);
+    const modules = await Module.find({ 
+      createdBy: req.user._id, 
+      isActive: true 
+    }).sort({ moduleCode: 1 });
 
     res.json({
       success: true,
-      modules
+      modules: modules.map(m => m.moduleCode)
     });
   } catch (error) {
-    console.error('Error fetching modules:', error);
-    res.status(500).json({ 
-      message: 'Server error', 
-      error: error.message 
-    });
+    console.error('Get lecturer modules error:', error);
+    res.status(500).json({ message: 'Server error', error: error.message });
   }
 };

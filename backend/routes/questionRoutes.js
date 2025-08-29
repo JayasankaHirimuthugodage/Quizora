@@ -20,6 +20,11 @@ router.get('/',
   questionController.getQuestions
 );
 
+router.get('/module/:moduleId', 
+  authorize('lecturer'), 
+  questionController.getQuestionsByModule
+);
+
 router.get('/stats', 
   authorize('lecturer'), 
   questionController.getQuestionStats

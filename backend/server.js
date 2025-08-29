@@ -10,14 +10,21 @@ import User from './models/User.js';
 import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
 import path from 'path';
+import fs from 'fs';
 
 dotenv.config();
 
 const app = express();
 
+// Create uploads directory if it doesn't exist
+const uploadsDir = path.resolve('uploads');
+if (!fs.existsSync(uploadsDir)) {
+  fs.mkdirSync(uploadsDir, { recursive: true });
+}
+
 // Security middleware
 app.use(helmet({
-  crossOriginResourcePolicy: false, // Allow images to be served
+  crossOriginResourcePolicy: false,
 }));
 
 // CORS configuration
@@ -31,23 +38,25 @@ app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
 // Static files for uploaded images
-app.use('/uploads', express.static(path.resolve('uploads')));
+app.use('/uploads', express.static(uploadsDir));
 
-// Rate limiting
+// General rate limiting - increased limits
 const limiter = rateLimit({ 
   windowMs: 15 * 60 * 1000, // 15 minutes
-  limit: 100, // limit each IP to 100 requests per windowMs
+  limit: 1000, // 1000 requests per 15 minutes
   standardHeaders: true,
   legacyHeaders: false,
+  message: 'Too many requests, please try again later.'
 });
 app.use(limiter);
 
 // Stricter rate limiting for auth routes
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  limit: 10, // limit each IP to 10 requests per windowMs for auth
+  limit: 50, // 50 auth requests per 15 minutes
   standardHeaders: true,
   legacyHeaders: false,
+  message: 'Too many authentication attempts, please try again later.'
 });
 
 // Database connection
