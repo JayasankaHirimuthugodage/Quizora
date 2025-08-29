@@ -1,22 +1,16 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { Search, Filter, Edit, Trash2, Eye, Plus } from "lucide-react";
+import { questionService } from "../services/questionService";
 
-const API_BASE = process.env.REACT_APP_API_URL || "http://localhost:5001";
-
-export default function QuestionBank({ onCreateNew, onEditQuestion }) {
+export default function QuestionBank({ module, onCreateNew, onEditQuestion }) {
   const [questions, setQuestions] = useState([]);
   const [filteredQuestions, setFilteredQuestions] = useState([]);
   const [loading, setLoading] = useState(true);
   const [filters, setFilters] = useState({
     search: "",
-    moduleCode: "",
-    moduleYear: "",
-    moduleSemester: "",
     type: "",
     difficulty: "",
   });
-  const [modules, setModules] = useState([]);
-  const [stats, setStats] = useState(null);
 
   const questionTypes = [
     { value: "", label: "All Types" },
@@ -32,89 +26,22 @@ export default function QuestionBank({ onCreateNew, onEditQuestion }) {
     { value: "Hard", label: "Hard" },
   ];
 
-  const moduleYears = [
-    { value: "", label: "All Years" },
-    { value: "1", label: "Year 1" },
-    { value: "2", label: "Year 2" },
-    { value: "3", label: "Year 3" },
-    { value: "4", label: "Year 4" },
-  ];
-
-  const moduleSemesters = [
-    { value: "", label: "All Semesters" },
-    { value: "1", label: "Semester 1" },
-    { value: "2", label: "Semester 2" },
-  ];
-
-  useEffect(() => {
-    fetchQuestions();
-    fetchModules();
-    fetchStats();
-  }, []);
-
-  useEffect(() => {
-    applyFilters();
-  }, [questions, filters]);
-
-  const getAuthHeaders = () => {
-    const token = localStorage.getItem("token");
-    return {
-      Authorization: `Bearer ${token}`,
-      "Content-Type": "application/json",
-    };
-  };
-
-  const fetchQuestions = async () => {
+  const fetchQuestions = useCallback(async () => {
+    if (!module) return;
+    
     try {
-      const response = await fetch(`${API_BASE}/api/questions`, {
-        headers: getAuthHeaders(),
-      });
-
-      if (!response.ok) {
-        throw new Error("Failed to fetch questions");
-      }
-
-      const data = await response.json();
-      setQuestions(data.questions || []);
+      setLoading(true);
+      const response = await questionService.getQuestionsByModule(module._id, filters);
+      setQuestions(response.questions || []);
     } catch (error) {
       console.error("Error fetching questions:", error);
       alert("Failed to load questions");
     } finally {
       setLoading(false);
     }
-  };
+  }, [module, filters]);
 
-  const fetchModules = async () => {
-    try {
-      const response = await fetch(`${API_BASE}/api/questions/modules`, {
-        headers: getAuthHeaders(),
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        setModules(data.modules || []);
-      }
-    } catch (error) {
-      console.error("Error fetching modules:", error);
-    }
-  };
-
-  const fetchStats = async () => {
-    try {
-      const response = await fetch(`${API_BASE}/api/questions/stats`, {
-        headers: getAuthHeaders(),
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        setStats(data.stats);
-      }
-    } catch (error) {
-      console.error("Error fetching stats:", error);
-    }
-  };
-
-  const applyFilters = () => {
+  const applyFilters = useCallback(() => {
     let filtered = [...questions];
 
     // Search filter
@@ -123,22 +50,7 @@ export default function QuestionBank({ onCreateNew, onEditQuestion }) {
       filtered = filtered.filter(
         (q) =>
           q.questionText.toLowerCase().includes(searchTerm) ||
-          q.tags.some((tag) => tag.toLowerCase().includes(searchTerm))
-      );
-    }
-
-    // Module filters
-    if (filters.moduleCode) {
-      filtered = filtered.filter((q) => q.moduleCode === filters.moduleCode);
-    }
-    if (filters.moduleYear) {
-      filtered = filtered.filter(
-        (q) => q.moduleYear.toString() === filters.moduleYear
-      );
-    }
-    if (filters.moduleSemester) {
-      filtered = filtered.filter(
-        (q) => q.moduleSemester.toString() === filters.moduleSemester
+          (q.tags && q.tags.some((tag) => tag.toLowerCase().includes(searchTerm)))
       );
     }
 
@@ -151,7 +63,15 @@ export default function QuestionBank({ onCreateNew, onEditQuestion }) {
     }
 
     setFilteredQuestions(filtered);
-  };
+  }, [questions, filters]);
+
+  useEffect(() => {
+    fetchQuestions();
+  }, [fetchQuestions]);
+
+  useEffect(() => {
+    applyFilters();
+  }, [applyFilters]);
 
   const handleFilterChange = (field, value) => {
     setFilters((prev) => ({ ...prev, [field]: value }));
@@ -160,9 +80,6 @@ export default function QuestionBank({ onCreateNew, onEditQuestion }) {
   const clearFilters = () => {
     setFilters({
       search: "",
-      moduleCode: "",
-      moduleYear: "",
-      moduleSemester: "",
       type: "",
       difficulty: "",
     });
@@ -174,15 +91,7 @@ export default function QuestionBank({ onCreateNew, onEditQuestion }) {
     }
 
     try {
-      const response = await fetch(`${API_BASE}/api/questions/${questionId}`, {
-        method: "DELETE",
-        headers: getAuthHeaders(),
-      });
-
-      if (!response.ok) {
-        throw new Error("Failed to delete question");
-      }
-
+      await questionService.deleteQuestion(questionId);
       setQuestions((prev) => prev.filter((q) => q._id !== questionId));
       alert("Question deleted successfully");
     } catch (error) {
@@ -222,9 +131,9 @@ export default function QuestionBank({ onCreateNew, onEditQuestion }) {
       {/* Header */}
       <div className="flex justify-between items-center">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Question Bank</h1>
+          <h2 className="text-xl font-bold text-gray-900">Questions</h2>
           <p className="text-sm text-gray-600">
-            Manage your questions and assessments
+            {questions.length} question{questions.length !== 1 ? 's' : ''} in this module
           </p>
         </div>
         <button
@@ -232,76 +141,9 @@ export default function QuestionBank({ onCreateNew, onEditQuestion }) {
           className="flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
         >
           <Plus size={16} className="mr-2" />
-          Create Question
+          Add Question
         </button>
       </div>
-
-      {/* Stats Cards */}
-      {stats && (
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-          <div className="bg-white p-4 rounded-lg border border-gray-200">
-            <div className="flex items-center">
-              <div className="p-2 bg-blue-100 rounded-lg">
-                <Eye className="w-5 h-5 text-blue-600" />
-              </div>
-              <div className="ml-3">
-                <p className="text-sm font-medium text-gray-500">
-                  Total Questions
-                </p>
-                <p className="text-lg font-semibold text-gray-900">
-                  {stats.totalQuestions}
-                </p>
-              </div>
-            </div>
-          </div>
-
-          <div className="bg-white p-4 rounded-lg border border-gray-200">
-            <div className="flex items-center">
-              <div className="p-2 bg-green-100 rounded-lg">
-                <div className="w-5 h-5 bg-green-600 rounded"></div>
-              </div>
-              <div className="ml-3">
-                <p className="text-sm font-medium text-gray-500">Modules</p>
-                <p className="text-lg font-semibold text-gray-900">
-                  {modules.length}
-                </p>
-              </div>
-            </div>
-          </div>
-
-          <div className="bg-white p-4 rounded-lg border border-gray-200">
-            <div className="flex items-center">
-              <div className="p-2 bg-purple-100 rounded-lg">
-                <div className="w-5 h-5 bg-purple-600 rounded"></div>
-              </div>
-              <div className="ml-3">
-                <p className="text-sm font-medium text-gray-500">
-                  MCQ Questions
-                </p>
-                <p className="text-lg font-semibold text-gray-900">
-                  {questions.filter((q) => q.type === "MCQ").length}
-                </p>
-              </div>
-            </div>
-          </div>
-
-          <div className="bg-white p-4 rounded-lg border border-gray-200">
-            <div className="flex items-center">
-              <div className="p-2 bg-orange-100 rounded-lg">
-                <div className="w-5 h-5 bg-orange-600 rounded"></div>
-              </div>
-              <div className="ml-3">
-                <p className="text-sm font-medium text-gray-500">
-                  Essay Questions
-                </p>
-                <p className="text-lg font-semibold text-gray-900">
-                  {questions.filter((q) => q.type === "Essay").length}
-                </p>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* Filters */}
       <div className="bg-white p-4 rounded-lg border border-gray-200">
@@ -310,8 +152,8 @@ export default function QuestionBank({ onCreateNew, onEditQuestion }) {
           <h3 className="text-lg font-medium">Filters</h3>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-4">
-          <div className="lg:col-span-2">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div>
             <div className="relative">
               <Search
                 className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400"
@@ -328,45 +170,6 @@ export default function QuestionBank({ onCreateNew, onEditQuestion }) {
           </div>
 
           <select
-            value={filters.moduleCode}
-            onChange={(e) => handleFilterChange("moduleCode", e.target.value)}
-            className="border border-gray-300 rounded-md px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-          >
-            <option value="">All Modules</option>
-            {modules.map((module) => (
-              <option key={module} value={module}>
-                {module}
-              </option>
-            ))}
-          </select>
-
-          <select
-            value={filters.moduleYear}
-            onChange={(e) => handleFilterChange("moduleYear", e.target.value)}
-            className="border border-gray-300 rounded-md px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-          >
-            {moduleYears.map((year) => (
-              <option key={year.value} value={year.value}>
-                {year.label}
-              </option>
-            ))}
-          </select>
-
-          <select
-            value={filters.moduleSemester}
-            onChange={(e) =>
-              handleFilterChange("moduleSemester", e.target.value)
-            }
-            className="border border-gray-300 rounded-md px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-          >
-            {moduleSemesters.map((semester) => (
-              <option key={semester.value} value={semester.value}>
-                {semester.label}
-              </option>
-            ))}
-          </select>
-
-          <select
             value={filters.type}
             onChange={(e) => handleFilterChange("type", e.target.value)}
             className="border border-gray-300 rounded-md px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
@@ -374,6 +177,18 @@ export default function QuestionBank({ onCreateNew, onEditQuestion }) {
             {questionTypes.map((type) => (
               <option key={type.value} value={type.value}>
                 {type.label}
+              </option>
+            ))}
+          </select>
+
+          <select
+            value={filters.difficulty}
+            onChange={(e) => handleFilterChange("difficulty", e.target.value)}
+            className="border border-gray-300 rounded-md px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+          >
+            {difficultyLevels.map((level) => (
+              <option key={level.value} value={level.value}>
+                {level.label}
               </option>
             ))}
           </select>
@@ -404,7 +219,7 @@ export default function QuestionBank({ onCreateNew, onEditQuestion }) {
             </h3>
             <p className="text-gray-500 mb-4">
               {questions.length === 0
-                ? "Create your first question to get started"
+                ? "Create your first question for this module"
                 : "Try adjusting your filters or search terms"}
             </p>
             {questions.length === 0 && (
@@ -441,17 +256,13 @@ export default function QuestionBank({ onCreateNew, onEditQuestion }) {
                         >
                           {question.difficulty}
                         </span>
-                        <span className="text-xs text-gray-500">
-                          {question.moduleCode} • Year {question.moduleYear} •
-                          Sem {question.moduleSemester}
-                        </span>
                       </div>
 
                       <h4 className="text-sm font-medium text-gray-900 mb-2 line-clamp-2">
                         {question.questionText}
                       </h4>
 
-                      {question.tags.length > 0 && (
+                      {question.tags && question.tags.length > 0 && (
                         <div className="flex flex-wrap gap-1 mb-2">
                           {question.tags.slice(0, 3).map((tag, index) => (
                             <span
