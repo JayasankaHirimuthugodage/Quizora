@@ -1,3 +1,5 @@
+// backend\routes\quizRoutes.js
+
 import { Router } from 'express';
 import { authenticate, authorize } from '../middleware/auth.js';
 import * as quizController from '../controllers/quizController.js';
@@ -26,6 +28,12 @@ router.get('/stats',
 router.get('/:id', 
   authorize('lecturer'), 
   quizController.getQuizById
+);
+
+// New route for checking editability
+router.get('/:id/editability', 
+  authorize('lecturer'), 
+  quizController.getQuizEditability
 );
 
 router.put('/:id', 

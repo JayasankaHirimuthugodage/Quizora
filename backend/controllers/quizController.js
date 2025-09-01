@@ -1,3 +1,5 @@
+// backend\controllers\quizController.js
+
 import Quiz from '../models/Quiz.js';
 import Module from '../models/Module.js';
 import Question from '../models/question.js';
@@ -131,22 +133,52 @@ export const updateQuiz = async (req, res) => {
       return res.status(404).json({ message: 'Quiz not found' });
     }
 
-    // Check if quiz has already started
-    if (quiz.hasStarted) {
+    // Allow editing of scheduled quizzes and active quizzes (with restrictions)
+    const now = new Date();
+    const quizStart = new Date(quiz.startDateTime);
+    const quizEnd = new Date(quiz.endDateTime);
+    
+    // Check if quiz is currently active
+    const isQuizActive = now >= quizStart && now <= quizEnd;
+    
+    // Check if quiz has ended
+    const hasQuizEnded = now > quizEnd;
+    
+    if (hasQuizEnded) {
       return res.status(400).json({ 
-        message: 'Cannot edit quiz that has already started' 
+        message: 'Cannot edit quiz that has already ended' 
       });
     }
 
     const updateData = { ...req.body };
 
+    // If quiz is currently active, restrict certain edits
+    if (isQuizActive) {
+      // Allow only limited updates for active quizzes
+      const allowedFields = ['endDateTime', 'allowLateSubmission', 'instructions'];
+      const requestedFields = Object.keys(updateData);
+      const invalidFields = requestedFields.filter(field => !allowedFields.includes(field));
+      
+      if (invalidFields.length > 0) {
+        return res.status(400).json({ 
+          message: `Quiz is currently active. Only these fields can be updated: ${allowedFields.join(', ')}` 
+        });
+      }
+    }
+
     // Validate dates if being updated
     if (updateData.startDateTime || updateData.endDateTime) {
       const start = new Date(updateData.startDateTime || quiz.startDateTime);
       const end = new Date(updateData.endDateTime || quiz.endDateTime);
-      const now = new Date();
 
-      if (start < now) {
+      // If quiz hasn't started yet, allow start time changes
+      if (updateData.startDateTime && now >= quizStart) {
+        return res.status(400).json({ 
+          message: 'Cannot change start time of a quiz that has already started' 
+        });
+      }
+
+      if (updateData.startDateTime && start < now) {
         return res.status(400).json({ 
           message: 'Quiz start time must be in the future' 
         });
@@ -162,8 +194,8 @@ export const updateQuiz = async (req, res) => {
       updateData.endDateTime = end;
     }
 
-    // Update question count if module changed
-    if (updateData.moduleId && updateData.moduleId !== quiz.moduleId.toString()) {
+    // Update question count if module changed (only for scheduled quizzes)
+    if (updateData.moduleId && updateData.moduleId !== quiz.moduleId.toString() && !isQuizActive) {
       const module = await Module.findOne({
         _id: updateData.moduleId,
         createdBy: req.user._id,
@@ -221,13 +253,37 @@ export const deleteQuiz = async (req, res) => {
       return res.status(404).json({ message: 'Quiz not found' });
     }
 
-    // Check if quiz has already started
-    if (quiz.hasStarted) {
+    const now = new Date();
+    const quizStart = new Date(quiz.startDateTime);
+    const quizEnd = new Date(quiz.endDateTime);
+    
+    // Check if quiz is currently active
+    const isQuizActive = now >= quizStart && now <= quizEnd;
+    
+    // Check if quiz has ended
+    const hasQuizEnded = now > quizEnd;
+
+    if (hasQuizEnded) {
       return res.status(400).json({ 
-        message: 'Cannot delete quiz that has already started' 
+        message: 'Cannot delete quiz that has already ended' 
       });
     }
 
+    // Allow deletion of active quizzes with warning
+    if (isQuizActive) {
+      // Soft delete and set status to cancelled
+      quiz.isActive = false;
+      quiz.status = 'cancelled';
+      await quiz.save();
+
+      return res.json({
+        success: true,
+        message: 'Active quiz has been cancelled successfully',
+        warning: 'Quiz was active and has been cancelled. Students taking the quiz will be notified.'
+      });
+    }
+
+    // Regular deletion for scheduled quizzes
     quiz.isActive = false;
     quiz.status = 'cancelled';
     await quiz.save();
@@ -266,7 +322,78 @@ export const getQuizById = async (req, res) => {
   }
 };
 
-// Student-specific endpoints
+// New endpoint to check if quiz can be edited
+export const getQuizEditability = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const quiz = await Quiz.findOne({
+      _id: id,
+      createdBy: req.user._id,
+      isActive: true
+    });
+
+    if (!quiz) {
+      return res.status(404).json({ message: 'Quiz not found' });
+    }
+
+    const now = new Date();
+    const quizStart = new Date(quiz.startDateTime);
+    const quizEnd = new Date(quiz.endDateTime);
+    
+    const isActive = now >= quizStart && now <= quizEnd;
+    const hasEnded = now > quizEnd;
+    const hasStarted = now >= quizStart;
+
+    let editability = {
+      canEdit: false,
+      canDelete: false,
+      restrictions: [],
+      status: 'unknown'
+    };
+
+    if (hasEnded) {
+      editability = {
+        canEdit: false,
+        canDelete: false,
+        restrictions: ['Quiz has ended'],
+        status: 'ended'
+      };
+    } else if (isActive) {
+      editability = {
+        canEdit: true,
+        canDelete: true,
+        restrictions: ['Only end time, late submission, and instructions can be modified'],
+        status: 'active',
+        allowedFields: ['endDateTime', 'allowLateSubmission', 'instructions']
+      };
+    } else {
+      editability = {
+        canEdit: true,
+        canDelete: true,
+        restrictions: [],
+        status: 'scheduled'
+      };
+    }
+
+    res.json({
+      success: true,
+      editability,
+      quiz: {
+        _id: quiz._id,
+        title: quiz.title,
+        startDateTime: quiz.startDateTime,
+        endDateTime: quiz.endDateTime,
+        status: quiz.status
+      }
+    });
+  } catch (error) {
+    console.error('Get quiz editability error:', error);
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+};
+
+// Student-specific endpoints (unchanged)
 export const getStudentQuizzes = async (req, res) => {
   try {
     const student = req.user;
@@ -275,7 +402,7 @@ export const getStudentQuizzes = async (req, res) => {
     const query = {
       isActive: true,
       status: { $in: ['scheduled', 'active'] },
-      startDateTime: { $lte: new Date(now.getTime() + 24 * 60 * 60 * 1000) }, // Next 24 hours
+      startDateTime: { $lte: new Date(now.getTime() + 24 * 60 * 60 * 1000) },
       eligibilityCriteria: {
         $elemMatch: {
           degreeTitle: student.degreeTitle,
@@ -311,6 +438,11 @@ export const verifyQuizPasscode = async (req, res) => {
 
     if (!quiz) {
       return res.status(404).json({ message: 'Quiz not found' });
+    }
+
+    // Check if quiz was cancelled
+    if (quiz.status === 'cancelled') {
+      return res.status(400).json({ message: 'This quiz has been cancelled by the instructor' });
     }
 
     // Check if student is eligible
@@ -362,6 +494,11 @@ export const getQuizQuestions = async (req, res) => {
       return res.status(404).json({ message: 'Quiz not found' });
     }
 
+    // Check if quiz was cancelled
+    if (quiz.status === 'cancelled') {
+      return res.status(400).json({ message: 'This quiz has been cancelled by the instructor' });
+    }
+
     // Check if student is eligible
     if (!quiz.isStudentEligible(req.user)) {
       return res.status(403).json({ message: 'You are not eligible for this quiz' });
@@ -376,7 +513,7 @@ export const getQuizQuestions = async (req, res) => {
     let questions = await Question.find({
       moduleId: quiz.moduleId,
       isActive: true
-    }).select('-answer -createdBy -updatedAt'); // Hide answers and metadata
+    }).select('-answer -createdBy -updatedAt');
 
     // Shuffle questions if enabled
     if (quiz.shuffleQuestions) {

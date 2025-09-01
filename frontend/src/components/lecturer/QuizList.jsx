@@ -1,6 +1,8 @@
+// frontend\src\components\lecturer\QuizList.jsx
+
 import { useState, useEffect } from 'react';
 import { quizService } from '../../services/quizService';
-import { Plus, Edit, Trash2, Calendar, Clock, Users, Key, MoreVertical } from 'lucide-react';
+import { Plus, Edit, Trash2, Calendar, Clock, Users, Key, AlertTriangle, CheckCircle } from 'lucide-react';
 
 const QuizList = ({ onCreateQuiz, onEditQuiz }) => {
   const [quizzes, setQuizzes] = useState([]);
@@ -11,10 +13,19 @@ const QuizList = ({ onCreateQuiz, onEditQuiz }) => {
     moduleCode: ''
   });
   const [stats, setStats] = useState(null);
+  const [deleteConfirm, setDeleteConfirm] = useState(null);
+  const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
     fetchQuizzes();
     fetchStats();
+    
+    // Set up real-time refresh for active quizzes
+    const interval = setInterval(() => {
+      fetchQuizzes();
+    }, 30000); // Refresh every 30 seconds
+
+    return () => clearInterval(interval);
   }, [filters]);
 
   const fetchQuizzes = async () => {
@@ -39,16 +50,38 @@ const QuizList = ({ onCreateQuiz, onEditQuiz }) => {
   };
 
   const handleDeleteQuiz = async (quiz) => {
-    if (!window.confirm(`Are you sure you want to delete "${quiz.title}"? This action cannot be undone.`)) {
-      return;
-    }
+    setDeleteConfirm(quiz);
+  };
+
+  const confirmDelete = async () => {
+    if (!deleteConfirm) return;
 
     try {
-      await quizService.deleteQuiz(quiz._id);
+      setDeleting(true);
+      const response = await quizService.deleteQuiz(deleteConfirm._id);
+      
+      if (response.warning) {
+        alert(`Warning: ${response.warning}`);
+      }
+      
       fetchQuizzes();
+      setDeleteConfirm(null);
     } catch (err) {
       alert(err.message);
+    } finally {
+      setDeleting(false);
     }
+  };
+
+  const getQuizStatus = (quiz) => {
+    const now = new Date();
+    const start = new Date(quiz.startDateTime);
+    const end = new Date(quiz.endDateTime);
+
+    if (quiz.status === 'cancelled') return 'cancelled';
+    if (now > end) return 'completed';
+    if (now >= start && now <= end) return 'active';
+    return 'scheduled';
   };
 
   const getStatusColor = (status) => {
@@ -56,13 +89,28 @@ const QuizList = ({ onCreateQuiz, onEditQuiz }) => {
       case 'scheduled':
         return 'bg-blue-100 text-blue-800';
       case 'active':
-        return 'bg-green-100 text-green-800';
+        return 'bg-green-100 text-green-800 animate-pulse';
       case 'completed':
         return 'bg-gray-100 text-gray-800';
       case 'cancelled':
         return 'bg-red-100 text-red-800';
       default:
         return 'bg-yellow-100 text-yellow-800';
+    }
+  };
+
+  const getStatusIcon = (status) => {
+    switch (status) {
+      case 'scheduled':
+        return <Clock size={14} />;
+      case 'active':
+        return <CheckCircle size={14} className="animate-pulse" />;
+      case 'completed':
+        return <CheckCircle size={14} />;
+      case 'cancelled':
+        return <AlertTriangle size={14} />;
+      default:
+        return <Clock size={14} />;
     }
   };
 
@@ -77,7 +125,39 @@ const QuizList = ({ onCreateQuiz, onEditQuiz }) => {
   };
 
   const isQuizEditable = (quiz) => {
-    return !quiz.hasStarted && quiz.status !== 'cancelled';
+    const now = new Date();
+    const end = new Date(quiz.endDateTime);
+    return now <= end && quiz.status !== 'cancelled';
+  };
+
+  const isQuizDeletable = (quiz) => {
+    const now = new Date();
+    const end = new Date(quiz.endDateTime);
+    return now <= end && quiz.status !== 'cancelled';
+  };
+
+  const getEditTooltip = (quiz) => {
+    const status = getQuizStatus(quiz);
+    if (status === 'active') {
+      return 'Quiz is active - limited editing available';
+    } else if (status === 'completed') {
+      return 'Quiz has ended - cannot edit';
+    } else if (status === 'cancelled') {
+      return 'Quiz is cancelled - cannot edit';
+    }
+    return 'Edit quiz';
+  };
+
+  const getDeleteTooltip = (quiz) => {
+    const status = getQuizStatus(quiz);
+    if (status === 'active') {
+      return 'Warning: This will cancel the active quiz';
+    } else if (status === 'completed') {
+      return 'Quiz has ended - cannot delete';
+    } else if (status === 'cancelled') {
+      return 'Quiz is already cancelled';
+    }
+    return 'Delete quiz';
   };
 
   if (loading) {
@@ -94,7 +174,7 @@ const QuizList = ({ onCreateQuiz, onEditQuiz }) => {
       <div className="flex justify-between items-center">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Quiz Management</h1>
-          <p className="text-sm text-gray-600">Create and manage quiz schedules</p>
+          <p className="text-sm text-gray-600">Create and manage quiz schedules with real-time editing</p>
         </div>
         <button
           onClick={onCreateQuiz}
@@ -142,10 +222,10 @@ const QuizList = ({ onCreateQuiz, onEditQuiz }) => {
           <div className="bg-white p-4 rounded-lg border border-gray-200">
             <div className="flex items-center">
               <div className="p-2 bg-green-100 rounded-lg">
-                <Users className="w-5 h-5 text-green-600" />
+                <Users className="w-5 h-5 text-green-600 animate-pulse" />
               </div>
               <div className="ml-3">
-                <p className="text-sm font-medium text-gray-500">Active</p>
+                <p className="text-sm font-medium text-gray-500">Active Now</p>
                 <p className="text-lg font-semibold text-gray-900">{stats.active}</p>
               </div>
             </div>
@@ -154,7 +234,7 @@ const QuizList = ({ onCreateQuiz, onEditQuiz }) => {
           <div className="bg-white p-4 rounded-lg border border-gray-200">
             <div className="flex items-center">
               <div className="p-2 bg-gray-100 rounded-lg">
-                <Calendar className="w-5 h-5 text-gray-600" />
+                <CheckCircle className="w-5 h-5 text-gray-600" />
               </div>
               <div className="ml-3">
                 <p className="text-sm font-medium text-gray-500">Completed</p>
@@ -198,6 +278,15 @@ const QuizList = ({ onCreateQuiz, onEditQuiz }) => {
               className="w-full border border-gray-300 rounded-md px-3 py-2"
             />
           </div>
+
+          <div className="flex items-end">
+            <button
+              onClick={fetchQuizzes}
+              className="px-4 py-2 bg-gray-100 text-gray-700 rounded-md hover:bg-gray-200"
+            >
+              Refresh
+            </button>
+          </div>
         </div>
       </div>
 
@@ -216,100 +305,195 @@ const QuizList = ({ onCreateQuiz, onEditQuiz }) => {
             </button>
           </div>
         ) : (
-          quizzes.map((quiz) => (
-            <div key={quiz._id} className="bg-white rounded-lg border border-gray-200 p-6 hover:shadow-lg transition-shadow">
-              <div className="flex items-start justify-between">
-                <div className="flex-1">
-                  <div className="flex items-center mb-2">
-                    <h3 className="text-lg font-semibold text-gray-900 mr-3">
-                      {quiz.title}
-                    </h3>
-                    <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${getStatusColor(quiz.status)}`}>
-                      {quiz.status.charAt(0).toUpperCase() + quiz.status.slice(1)}
-                    </span>
+          quizzes.map((quiz) => {
+            const status = getQuizStatus(quiz);
+            const editable = isQuizEditable(quiz);
+            const deletable = isQuizDeletable(quiz);
+
+            return (
+              <div key={quiz._id} className="bg-white rounded-lg border border-gray-200 p-6 hover:shadow-lg transition-shadow">
+                <div className="flex items-start justify-between">
+                  <div className="flex-1">
+                    <div className="flex items-center mb-2">
+                      <h3 className="text-lg font-semibold text-gray-900 mr-3">
+                        {quiz.title}
+                      </h3>
+                      <span className={`inline-flex items-center px-2 py-1 text-xs font-semibold rounded-full ${getStatusColor(status)}`}>
+                        {getStatusIcon(status)}
+                        <span className="ml-1">{status.charAt(0).toUpperCase() + status.slice(1)}</span>
+                      </span>
+                      {status === 'active' && (
+                        <div className="ml-2 flex items-center text-xs text-green-600">
+                          <div className="w-2 h-2 bg-green-500 rounded-full mr-1 animate-pulse"></div>
+                          LIVE
+                        </div>
+                      )}
+                    </div>
+                    
+                    <div className="text-sm text-gray-600 mb-3">
+                      <span className="font-medium">{quiz.moduleCode}</span>
+                      {quiz.moduleId?.moduleName && ` - ${quiz.moduleId.moduleName}`}
+                    </div>
+
+                    {quiz.description && (
+                      <p className="text-sm text-gray-600 mb-4">{quiz.description}</p>
+                    )}
+
+                    <div className="grid grid-cols-1 md:grid-cols-4 gap-4 text-sm">
+                      <div className="flex items-center">
+                        <Calendar className="w-4 h-4 text-gray-400 mr-2" />
+                        <div>
+                          <p className="text-gray-500">Start</p>
+                          <p className="font-medium">{formatDateTime(quiz.startDateTime)}</p>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center">
+                        <Calendar className="w-4 h-4 text-gray-400 mr-2" />
+                        <div>
+                          <p className="text-gray-500">End</p>
+                          <p className="font-medium">{formatDateTime(quiz.endDateTime)}</p>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center">
+                        <Clock className="w-4 h-4 text-gray-400 mr-2" />
+                        <div>
+                          <p className="text-gray-500">Duration</p>
+                          <p className="font-medium">{quiz.duration} mins</p>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center">
+                        <Key className="w-4 h-4 text-gray-400 mr-2" />
+                        <div>
+                          <p className="text-gray-500">Passcode</p>
+                          <p className="font-medium font-mono">{quiz.passcode}</p>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center space-x-2 ml-4">
+                    {editable && (
+                      <button
+                        onClick={() => onEditQuiz(quiz)}
+                        className={`p-2 rounded transition-colors ${
+                          status === 'active' 
+                            ? 'text-orange-600 hover:bg-orange-50' 
+                            : 'text-blue-600 hover:bg-blue-50'
+                        }`}
+                        title={getEditTooltip(quiz)}
+                      >
+                        <Edit size={16} />
+                      </button>
+                    )}
+                    
+                    {deletable && (
+                      <button
+                        onClick={() => handleDeleteQuiz(quiz)}
+                        className={`p-2 rounded transition-colors ${
+                          status === 'active'
+                            ? 'text-orange-600 hover:bg-orange-50'
+                            : 'text-red-600 hover:bg-red-50'
+                        }`}
+                        title={getDeleteTooltip(quiz)}
+                      >
+                        <Trash2 size={16} />
+                      </button>
+                    )}
+
+                    {!editable && !deletable && (
+                      <div className="text-xs text-gray-500 px-2 py-1 bg-gray-100 rounded">
+                        {status === 'completed' ? 'Completed' : 'Cancelled'}
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Eligibility Criteria */}
+                <div className="mt-4 pt-4 border-t border-gray-100">
+                  <p className="text-xs text-gray-500 mb-2">Eligible Students:</p>
+                  <div className="flex flex-wrap gap-2">
+                    {quiz.eligibilityCriteria.map((criteria, index) => (
+                      <span key={index} className="inline-flex px-2 py-1 bg-gray-100 text-xs text-gray-700 rounded">
+                        {criteria.degreeTitle} - Year {criteria.year}, Sem {criteria.semester}
+                      </span>
+                    ))}
                   </div>
                   
-                  <div className="text-sm text-gray-600 mb-3">
-                    <span className="font-medium">{quiz.moduleCode}</span>
-                    {quiz.moduleId?.moduleName && ` - ${quiz.moduleId.moduleName}`}
-                  </div>
-
-                  {quiz.description && (
-                    <p className="text-sm text-gray-600 mb-4">{quiz.description}</p>
-                  )}
-
-                  <div className="grid grid-cols-1 md:grid-cols-4 gap-4 text-sm">
-                    <div className="flex items-center">
-                      <Calendar className="w-4 h-4 text-gray-400 mr-2" />
-                      <div>
-                        <p className="text-gray-500">Start</p>
-                        <p className="font-medium">{formatDateTime(quiz.startDateTime)}</p>
-                      </div>
+                  <div className="flex items-center justify-between mt-2">
+                    <div className="flex items-center text-xs text-gray-500">
+                      <Users className="w-3 h-3 mr-1" />
+                      {quiz.eligibilityCriteria.length} eligible group{quiz.eligibilityCriteria.length !== 1 ? 's' : ''}
                     </div>
-
-                    <div className="flex items-center">
-                      <Clock className="w-4 h-4 text-gray-400 mr-2" />
-                      <div>
-                        <p className="text-gray-500">Duration</p>
-                        <p className="font-medium">{quiz.duration} mins</p>
+                    
+                    {status === 'active' && (
+                      <div className="text-xs text-green-600 font-medium">
+                        Students can access this quiz now
                       </div>
-                    </div>
-
-                    <div className="flex items-center">
-                      <Users className="w-4 h-4 text-gray-400 mr-2" />
-                      <div>
-                        <p className="text-gray-500">Eligible Groups</p>
-                        <p className="font-medium">{quiz.eligibilityCriteria.length}</p>
-                      </div>
-                    </div>
-
-                    <div className="flex items-center">
-                      <Key className="w-4 h-4 text-gray-400 mr-2" />
-                      <div>
-                        <p className="text-gray-500">Passcode</p>
-                        <p className="font-medium font-mono">{quiz.passcode}</p>
-                      </div>
-                    </div>
+                    )}
                   </div>
                 </div>
-
-                <div className="flex items-center space-x-2 ml-4">
-                  {isQuizEditable(quiz) && (
-                    <button
-                      onClick={() => onEditQuiz(quiz)}
-                      className="p-2 text-blue-600 hover:bg-blue-50 rounded"
-                      title="Edit Quiz"
-                    >
-                      <Edit size={16} />
-                    </button>
-                  )}
-                  
-                  <button
-                    onClick={() => handleDeleteQuiz(quiz)}
-                    className="p-2 text-red-600 hover:bg-red-50 rounded"
-                    title="Delete Quiz"
-                    disabled={quiz.hasStarted}
-                  >
-                    <Trash2 size={16} />
-                  </button>
-                </div>
               </div>
-
-              {/* Eligibility Criteria */}
-              <div className="mt-4 pt-4 border-t border-gray-100">
-                <p className="text-xs text-gray-500 mb-2">Eligible Students:</p>
-                <div className="flex flex-wrap gap-2">
-                  {quiz.eligibilityCriteria.map((criteria, index) => (
-                    <span key={index} className="inline-flex px-2 py-1 bg-gray-100 text-xs text-gray-700 rounded">
-                      {criteria.degreeTitle} - Year {criteria.year}, Sem {criteria.semester}
-                    </span>
-                  ))}
-                </div>
-              </div>
-            </div>
-          ))
+            );
+          })
         )}
       </div>
+
+      {/* Delete Confirmation Modal */}
+      {deleteConfirm && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 max-w-md mx-4">
+            <div className="flex items-center mb-4">
+              {getQuizStatus(deleteConfirm) === 'active' ? (
+                <AlertTriangle className="w-6 h-6 text-orange-500 mr-3" />
+              ) : (
+                <Trash2 className="w-6 h-6 text-red-500 mr-3" />
+              )}
+              <h3 className="text-lg font-semibold text-gray-900">
+                {getQuizStatus(deleteConfirm) === 'active' ? 'Cancel Active Quiz?' : 'Delete Quiz?'}
+              </h3>
+            </div>
+            
+            <p className="text-gray-600 mb-4">
+              {getQuizStatus(deleteConfirm) === 'active' 
+                ? `Are you sure you want to cancel "${deleteConfirm.title}"? This quiz is currently active and students may be taking it. This action cannot be undone.`
+                : `Are you sure you want to delete "${deleteConfirm.title}"? This action cannot be undone.`
+              }
+            </p>
+            
+            {getQuizStatus(deleteConfirm) === 'active' && (
+              <div className="bg-orange-50 border border-orange-200 rounded p-3 mb-4">
+                <p className="text-sm text-orange-800">
+                  <strong>Warning:</strong> Students currently taking this quiz will be notified that it has been cancelled.
+                </p>
+              </div>
+            )}
+            
+            <div className="flex space-x-4">
+              <button
+                onClick={() => setDeleteConfirm(null)}
+                disabled={deleting}
+                className="flex-1 px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={confirmDelete}
+                disabled={deleting}
+                className={`flex-1 px-4 py-2 rounded-lg text-white disabled:opacity-50 ${
+                  getQuizStatus(deleteConfirm) === 'active'
+                    ? 'bg-orange-600 hover:bg-orange-700'
+                    : 'bg-red-600 hover:bg-red-700'
+                }`}
+              >
+                {deleting ? 'Processing...' : getQuizStatus(deleteConfirm) === 'active' ? 'Cancel Quiz' : 'Delete Quiz'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

@@ -1,3 +1,5 @@
+// frontend\src\services\quizService.js
+
 import api from './api';
 
 export const quizService = {
@@ -24,6 +26,11 @@ export const quizService = {
 
   getQuizById: async (id) => {
     const response = await api.get(`/quizzes/${id}`);
+    return response;
+  },
+
+  getQuizEditability: async (id) => {
+    const response = await api.get(`/quizzes/${id}/editability`);
     return response;
   },
 

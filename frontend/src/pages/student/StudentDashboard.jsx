@@ -1,13 +1,16 @@
+// frontend\src\pages\student\StudentDashboard.jsx
+
 import { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { userService } from '../../services/userService';
 import { quizService } from '../../services/quizService';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import QuizCard from '../../components/student/QuizCard';
 
 const StudentDashboard = () => {
   const { user } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
   const [currentTime, setCurrentTime] = useState(new Date());
   const [degreeOptions, setDegreeOptions] = useState([]);
   const [availableQuizzes, setAvailableQuizzes] = useState([]);
@@ -30,6 +33,15 @@ const StudentDashboard = () => {
       clearInterval(quizRefreshInterval);
     };
   }, []);
+
+  // Show message if redirected from quiz page
+  useEffect(() => {
+    if (location.state?.message) {
+      alert(location.state.message);
+      // Clear the message from state
+      navigate('/student/dashboard', { replace: true });
+    }
+  }, [location.state, navigate]);
 
   const fetchDegreeOptions = async () => {
     try {
@@ -87,13 +99,19 @@ const StudentDashboard = () => {
 
   const handleStartQuiz = async (quizId, passcode) => {
     try {
+      console.log('Verifying passcode for quiz:', quizId);
       const response = await quizService.verifyQuizPasscode(quizId, passcode);
       
-      // Navigate to quiz page with verified quiz data
+      console.log('Passcode verified, quiz data:', response.quiz);
+      
+      // Navigate with quiz data in state
       navigate(`/student/quiz/${quizId}`, {
-        state: { quizData: response.quiz }
+        state: { 
+          quizData: response.quiz 
+        }
       });
     } catch (error) {
+      console.error('Passcode verification failed:', error);
       throw error; // Re-throw to be handled by QuizCard
     }
   };

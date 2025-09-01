@@ -1,5 +1,7 @@
+// frontend\src\pages\student\QuizPage.jsx
+
 import { useState, useEffect } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { quizService } from '../../services/quizService';
 import QuizInstructions from '../../components/student/QuizInstructions';
 import QuizInterface from '../../components/student/QuizInterface';
@@ -8,43 +10,60 @@ import { AlertCircle } from 'lucide-react';
 const QuizPage = () => {
   const { id } = useParams();
   const navigate = useNavigate();
-  const [currentStep, setCurrentStep] = useState('instructions'); // 'instructions', 'quiz', 'completed'
+  const location = useLocation();
+  const [currentStep, setCurrentStep] = useState('loading');
   const [quiz, setQuiz] = useState(null);
   const [questions, setQuestions] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
   useEffect(() => {
-    if (currentStep === 'instructions' && quiz) {
-      // Quiz data is already loaded from verification
+    initializeQuiz();
+  }, [id, location.state]);
+
+  const initializeQuiz = async () => {
+    try {
+      setLoading(true);
+      setError('');
+
+      // Check if quiz data was passed via navigation state (after passcode verification)
+      if (location.state?.quizData) {
+        console.log('Using quiz data from navigation state:', location.state.quizData);
+        setQuiz(location.state.quizData);
+        setCurrentStep('instructions');
+      } else {
+        // If no quiz data in state, redirect back to dashboard
+        console.log('No quiz data found, redirecting to dashboard');
+        navigate('/student/dashboard', { 
+          replace: true,
+          state: { message: 'Please access the quiz from your dashboard' }
+        });
+        return;
+      }
+    } catch (err) {
+      console.error('Error initializing quiz:', err);
+      setError(err.message || 'Failed to initialize quiz');
+    } finally {
       setLoading(false);
-    } else if (currentStep === 'quiz') {
-      loadQuizQuestions();
     }
-  }, [currentStep, id]);
+  };
 
   const loadQuizQuestions = async () => {
     try {
       setLoading(true);
       const response = await quizService.getQuizQuestions(id);
       setQuestions(response.questions || []);
-      setQuiz(prev => ({ ...prev, ...response.quiz }));
+      setCurrentStep('quiz');
     } catch (err) {
-      setError(err.message);
+      console.error('Error loading quiz questions:', err);
+      setError(err.message || 'Failed to load quiz questions');
     } finally {
       setLoading(false);
     }
   };
 
-  // This function will be called from QuizCard after passcode verification
-  const initializeQuiz = (quizData) => {
-    setQuiz(quizData);
-    setCurrentStep('instructions');
-    setLoading(false);
-  };
-
   const handleStartQuiz = async () => {
-    setCurrentStep('quiz');
+    await loadQuizQuestions();
   };
 
   const handleCancelQuiz = () => {
@@ -53,32 +72,35 @@ const QuizPage = () => {
 
   const handleSubmitQuiz = async (submissionData) => {
     try {
-      // Here you would typically send the submission to your backend
+      setLoading(true);
+      // TODO: Implement quiz submission to backend
       console.log('Quiz submitted:', submissionData);
       
-      // For now, just show completion
       setCurrentStep('completed');
       
-      // Redirect after a delay
       setTimeout(() => {
         navigate('/student/dashboard');
       }, 3000);
     } catch (err) {
       setError(err.message);
+    } finally {
+      setLoading(false);
     }
   };
 
-  if (loading) {
+  // Loading state
+  if (loading && currentStep === 'loading') {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
-          <p className="text-gray-600">Loading quiz...</p>
+          <p className="text-gray-600">Initializing quiz...</p>
         </div>
       </div>
     );
   }
 
+  // Error state
   if (error) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
@@ -97,6 +119,7 @@ const QuizPage = () => {
     );
   }
 
+  // Completed state
   if (currentStep === 'completed') {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
@@ -121,6 +144,7 @@ const QuizPage = () => {
     );
   }
 
+  // Instructions step
   if (currentStep === 'instructions' && quiz) {
     return (
       <QuizInstructions
@@ -131,6 +155,7 @@ const QuizPage = () => {
     );
   }
 
+  // Quiz step
   if (currentStep === 'quiz' && quiz && questions.length > 0) {
     return (
       <QuizInterface
@@ -141,6 +166,7 @@ const QuizPage = () => {
     );
   }
 
+  // Fallback loading state
   return (
     <div className="min-h-screen bg-gray-50 flex items-center justify-center">
       <div className="text-center">
