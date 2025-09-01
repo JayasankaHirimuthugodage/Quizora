@@ -6,6 +6,7 @@ import authRoutes from './routes/authRoutes.js';
 import userRoutes from './routes/userRoutes.js';
 import questionRoutes from './routes/questionRoutes.js';
 import moduleRoutes from './routes/moduleRoutes.js';
+import quizRoutes from './routes/quizRoutes.js'; // Add this import
 import User from './models/User.js';
 import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
@@ -40,10 +41,10 @@ app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 // Static files for uploaded images
 app.use('/uploads', express.static(uploadsDir));
 
-// General rate limiting - increased limits
+// General rate limiting
 const limiter = rateLimit({ 
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  limit: 1000, // 1000 requests per 15 minutes
+  windowMs: 15 * 60 * 1000,
+  limit: 1000,
   standardHeaders: true,
   legacyHeaders: false,
   message: 'Too many requests, please try again later.'
@@ -52,8 +53,8 @@ app.use(limiter);
 
 // Stricter rate limiting for auth routes
 const authLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  limit: 50, // 50 auth requests per 15 minutes
+  windowMs: 15 * 60 * 1000,
+  limit: 50,
   standardHeaders: true,
   legacyHeaders: false,
   message: 'Too many authentication attempts, please try again later.'
@@ -98,6 +99,7 @@ app.use('/api/auth', authLimiter, authRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/questions', questionRoutes);
 app.use('/api/modules', moduleRoutes);
+app.use('/api/quizzes', quizRoutes); // Add this line
 
 // Health check
 app.get('/api/health', (req, res) => {
@@ -120,7 +122,6 @@ app.use('*', (req, res) => {
 app.use((err, req, res, next) => {
   console.error('Error stack:', err.stack);
   
-  // Handle multer file upload errors
   if (err.code === 'LIMIT_FILE_SIZE') {
     return res.status(400).json({ 
       message: 'File too large. Maximum size is 5MB.' 
@@ -133,7 +134,6 @@ app.use((err, req, res, next) => {
     });
   }
 
-  // Handle mongoose validation errors
   if (err.name === 'ValidationError') {
     const errors = Object.values(err.errors).map(e => e.message);
     return res.status(400).json({ 
@@ -142,14 +142,12 @@ app.use((err, req, res, next) => {
     });
   }
 
-  // Handle mongoose duplicate key error
   if (err.code === 11000) {
     return res.status(400).json({ 
       message: 'Resource already exists' 
     });
   }
 
-  // Handle JWT errors
   if (err.name === 'JsonWebTokenError') {
     return res.status(401).json({ 
       message: 'Invalid token' 
@@ -162,7 +160,6 @@ app.use((err, req, res, next) => {
     });
   }
 
-  // Default error response
   res.status(500).json({ 
     message: 'Internal server error',
     error: process.env.NODE_ENV === 'development' ? err.message : 'Something went wrong!'
