@@ -1,5 +1,3 @@
-//frontend\src\components\student\QuizCard.jsx
-
 import { useState } from 'react';
 import { Calendar, Clock, Key, Users, BookOpen, AlertCircle } from 'lucide-react';
 
