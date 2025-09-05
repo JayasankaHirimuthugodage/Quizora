@@ -16,13 +16,18 @@ const questionSchema = new mongoose.Schema(
       type: String, 
       required: true 
     },
-    options: [optionSchema],          // MCQ options
-    answer: { type: String },         // Structured/Essay answer
-    image: { type: String },          // stored filename
-    equations: [{ type: String }],    // LaTeX/MathJax strings
+    options: [optionSchema],
+    answer: { type: String },
+    image: { type: String },
+    equations: [{ type: String }],
     tags: [String],
     
-    // Module-specific fields
+    // Module reference - UPDATED
+    moduleId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Module',
+      required: true
+    },
     moduleCode: {
       type: String,
       required: true,
@@ -40,14 +45,12 @@ const questionSchema = new mongoose.Schema(
       enum: [1, 2]
     },
     
-    // Question ownership
     createdBy: { 
       type: mongoose.Schema.Types.ObjectId, 
       ref: 'User',
       required: true
     },
     
-    // Status and metadata
     isActive: {
       type: Boolean,
       default: true
@@ -60,8 +63,8 @@ const questionSchema = new mongoose.Schema(
   },
   { 
     timestamps: true,
-    // Add compound index for efficient querying
     indexes: [
+      { createdBy: 1, moduleId: 1 },
       { createdBy: 1, moduleCode: 1, moduleYear: 1, moduleSemester: 1 },
       { createdBy: 1, type: 1 },
       { tags: 1 }
@@ -69,18 +72,27 @@ const questionSchema = new mongoose.Schema(
   }
 );
 
-// Instance method to check if user can access this question
 questionSchema.methods.canAccess = function(user) {
   return this.createdBy.toString() === user._id.toString();
 };
 
-// Static method to find questions by lecturer and module
-questionSchema.statics.findByLecturerAndModule = function(lecturerId, moduleCode, moduleYear, moduleSemester) {
-  const query = { createdBy: lecturerId };
+// Updated static method
+questionSchema.statics.findByModule = function(lecturerId, moduleId, filters = {}) {
+  const query = { 
+    createdBy: lecturerId, 
+    moduleId: moduleId,
+    isActive: true 
+  };
   
-  if (moduleCode) query.moduleCode = moduleCode;
-  if (moduleYear) query.moduleYear = moduleYear;
-  if (moduleSemester) query.moduleSemester = moduleSemester;
+  if (filters.type) query.type = filters.type;
+  if (filters.difficulty) query.difficulty = filters.difficulty;
+  
+  if (filters.search) {
+    query.$or = [
+      { questionText: { $regex: filters.search, $options: 'i' } },
+      { tags: { $in: [new RegExp(filters.search, 'i')] } }
+    ];
+  }
   
   return this.find(query).sort({ createdAt: -1 });
 };
