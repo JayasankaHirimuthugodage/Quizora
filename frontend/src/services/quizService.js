@@ -1,9 +1,8 @@
-// frontend\src\services\quizService.js
-
 import api from './api';
 
+const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:5001';
+
 export const quizService = {
-  // Lecturer endpoints
   getQuizzes: async (params = {}) => {
     const response = await api.get('/quizzes', params);
     return response;
@@ -11,6 +10,11 @@ export const quizService = {
 
   createQuiz: async (quizData) => {
     const response = await api.post('/quizzes', quizData);
+    return response;
+  },
+
+  getQuizById: async (id) => {
+    const response = await api.get(`/quizzes/${id}`);
     return response;
   },
 
@@ -24,8 +28,8 @@ export const quizService = {
     return response;
   },
 
-  getQuizById: async (id) => {
-    const response = await api.get(`/quizzes/${id}`);
+  getQuizStats: async () => {
+    const response = await api.get('/quizzes/stats');
     return response;
   },
 
@@ -34,12 +38,7 @@ export const quizService = {
     return response;
   },
 
-  getQuizStats: async () => {
-    const response = await api.get('/quizzes/stats');
-    return response;
-  },
-
-  // Student endpoints
+  // Student quiz methods
   getStudentQuizzes: async () => {
     const response = await api.get('/quizzes/student/available');
     return response;
@@ -52,6 +51,22 @@ export const quizService = {
 
   getQuizQuestions: async (quizId) => {
     const response = await api.get(`/quizzes/${quizId}/questions`);
+    return response;
+  },
+
+  submitQuiz: async (quizId, submissionData) => {
+    const response = await api.post(`/quizzes/${quizId}/submit`, submissionData);
+    return response;
+  },
+
+  // Analytics methods
+  getAnalytics: async (params = {}) => {
+    const response = await api.get('/quizzes/analytics', params);
+    return response;
+  },
+
+  getQuizResults: async (quizId) => {
+    const response = await api.get(`/quizzes/${quizId}/results`);
     return response;
   }
 };
