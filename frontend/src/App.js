@@ -1,4 +1,4 @@
-//App.js
+// frontend/src/App.js
 
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider } from './context/AuthContext';
@@ -16,7 +16,12 @@ import QuizPage from './pages/student/QuizPage';
 function App() {
   return (
     <AuthProvider>
-      <Router>
+      <Router
+        future={{
+          v7_startTransition: true,
+          v7_relativeSplatPath: true
+        }}
+      >
         <div className="App">
           <Routes>
             {/* Public Routes */}
