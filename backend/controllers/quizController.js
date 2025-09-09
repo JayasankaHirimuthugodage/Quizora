@@ -1,4 +1,4 @@
-// backend/controllers/quizController.js - COMPLETE CONTROLLER
+// backend/controllers/quizController.js - COMPLETE CONTROLLER WITH ENHANCED ANALYTICS
 
 import Quiz from '../models/Quiz.js';
 import Module from '../models/Module.js';
@@ -887,7 +887,7 @@ export const submitQuiz = async (req, res) => {
 };
 
 // ============================
-// ANALYTICS ENDPOINTS
+// ANALYTICS ENDPOINTS - ENHANCED WITH CORRECT ANSWER COUNTS
 // ============================
 
 export const getAnalytics = async (req, res) => {
@@ -916,29 +916,56 @@ export const getAnalytics = async (req, res) => {
 
     console.log('Analytics match conditions:', matchConditions);
 
-    // Overall statistics
+    // Overall statistics with correct answer counts
     const overallStats = await Result.aggregate([
       { $match: matchConditions },
+      { $unwind: '$answers' }, // Unwind answers array to work with individual answers
       {
         $group: {
           _id: null,
-          totalSubmissions: { $sum: 1 },
+          totalSubmissions: { $addToSet: '$_id' }, // Count unique submissions
+          totalQuestions: { $sum: 1 }, // Total questions attempted
+          correctAnswers: { $sum: { $cond: ['$answers.isCorrect', 1, 0] } }, // Count correct answers
+          totalMarks: { $sum: '$answers.marks' }, // Sum of all marks earned
+          maxPossibleMarks: { $sum: '$answers.maxMarks' }, // Sum of all possible marks
           averageScore: { $avg: '$percentage' },
           highestScore: { $max: '$percentage' },
           lowestScore: { $min: '$percentage' },
           totalStudents: { $addToSet: '$studentId' }
         }
+      },
+      {
+        $project: {
+          totalSubmissions: { $size: '$totalSubmissions' },
+          totalQuestions: 1,
+          correctAnswers: 1,
+          totalMarks: 1,
+          maxPossibleMarks: 1,
+          correctAnswerRate: { 
+            $round: [
+              { $multiply: [{ $divide: ['$correctAnswers', '$totalQuestions'] }, 100] }, 
+              1
+            ] 
+          },
+          averageScore: { $round: ['$averageScore', 1] },
+          highestScore: 1,
+          lowestScore: 1,
+          uniqueStudents: { $size: '$totalStudents' }
+        }
       }
     ]);
 
-    // Module-wise performance
+    // Module-wise performance with correct answer statistics
     const modulePerformance = await Result.aggregate([
       { $match: matchConditions },
+      { $unwind: '$answers' },
       {
         $group: {
           _id: '$moduleCode',
           averageScore: { $avg: '$percentage' },
-          totalSubmissions: { $sum: 1 },
+          totalSubmissions: { $addToSet: '$_id' },
+          totalQuestions: { $sum: 1 },
+          correctAnswers: { $sum: { $cond: ['$answers.isCorrect', 1, 0] } },
           students: { $addToSet: '$studentId' }
         }
       },
@@ -946,12 +973,78 @@ export const getAnalytics = async (req, res) => {
         $project: {
           moduleCode: '$_id',
           averageScore: { $round: ['$averageScore', 1] },
-          totalSubmissions: 1,
+          totalSubmissions: { $size: '$totalSubmissions' },
+          totalQuestions: 1,
+          correctAnswers: 1,
+          correctAnswerRate: { 
+            $round: [
+              { $multiply: [{ $divide: ['$correctAnswers', '$totalQuestions'] }, 100] }, 
+              1
+            ] 
+          },
           uniqueStudents: { $size: '$students' },
           _id: 0
         }
       },
       { $sort: { averageScore: -1 } }
+    ]);
+
+    // Question-wise analytics (most difficult questions)
+    const questionAnalytics = await Result.aggregate([
+      { $match: matchConditions },
+      { $unwind: '$answers' },
+      {
+        $group: {
+          _id: {
+            questionId: '$answers.questionId',
+            questionText: '$answers.questionText',
+            questionType: '$answers.questionType'
+          },
+          totalAttempts: { $sum: 1 },
+          correctCount: { $sum: { $cond: ['$answers.isCorrect', 1, 0] } },
+          averageMarks: { $avg: '$answers.marks' },
+          maxMarks: { $first: '$answers.maxMarks' }
+        }
+      },
+      {
+        $project: {
+          questionText: '$_id.questionText',
+          questionType: '$_id.questionType',
+          totalAttempts: 1,
+          correctCount: 1,
+          incorrectCount: { $subtract: ['$totalAttempts', '$correctCount'] },
+          correctRate: { 
+            $round: [
+              { $multiply: [{ $divide: ['$correctCount', '$totalAttempts'] }, 100] }, 
+              1
+            ] 
+          },
+          averageMarks: { $round: ['$averageMarks', 1] },
+          maxMarks: 1,
+          difficulty: {
+            $switch: {
+              branches: [
+                { 
+                  case: { $gte: [{ $divide: ['$correctCount', '$totalAttempts'] }, 0.8] }, 
+                  then: 'Easy' 
+                },
+                { 
+                  case: { $gte: [{ $divide: ['$correctCount', '$totalAttempts'] }, 0.5] }, 
+                  then: 'Medium' 
+                },
+                { 
+                  case: { $lt: [{ $divide: ['$correctCount', '$totalAttempts'] }, 0.5] }, 
+                  then: 'Hard' 
+                }
+              ],
+              default: 'Unknown'
+            }
+          },
+          _id: 0
+        }
+      },
+      { $sort: { correctRate: 1 } }, // Sort by difficulty (lowest correct rate first)
+      { $limit: 10 } // Top 10 most difficult questions
     ]);
 
     // Grade distribution
@@ -966,39 +1059,88 @@ export const getAnalytics = async (req, res) => {
       { $sort: { _id: 1 } }
     ]);
 
-    // Recent submissions
+    // Recent submissions with correct answer details
     const recentSubmissions = await Result.find(matchConditions)
       .sort({ createdAt: -1 })
       .limit(10)
-      .select('studentName quizTitle moduleCode percentage grade createdAt timeTaken')
+      .select('studentName quizTitle moduleCode percentage grade createdAt timeTaken answers')
       .lean();
 
-    // Performance trends (last 7 days)
+    // Add correct answer counts to recent submissions
+    const enhancedRecentSubmissions = recentSubmissions.map(submission => ({
+      ...submission,
+      totalQuestions: submission.answers?.length || 0,
+      correctAnswers: submission.answers?.filter(ans => ans.isCorrect).length || 0,
+      correctAnswerRate: submission.answers?.length > 0 ? 
+        Math.round((submission.answers.filter(ans => ans.isCorrect).length / submission.answers.length) * 100) : 0,
+      answers: undefined // Remove detailed answers from response for performance
+    }));
+
+    // Performance trends (last 7 days) with correct answer tracking
     const performanceTrends = await Result.aggregate([
       { $match: matchConditions },
+      { $unwind: '$answers' },
       {
         $group: {
           _id: {
             date: { $dateToString: { format: '%Y-%m-%d', date: '$createdAt' } }
           },
+          submissions: { $addToSet: '$_id' },
           averageScore: { $avg: '$percentage' },
-          submissions: { $sum: 1 }
+          totalQuestions: { $sum: 1 },
+          correctAnswers: { $sum: { $cond: ['$answers.isCorrect', 1, 0] } }
         }
       },
-      { $sort: { '_id.date': 1 } },
+      {
+        $project: {
+          date: '$_id.date',
+          submissions: { $size: '$submissions' },
+          averageScore: { $round: ['$averageScore', 1] },
+          totalQuestions: 1,
+          correctAnswers: 1,
+          correctAnswerRate: { 
+            $round: [
+              { $multiply: [{ $divide: ['$correctAnswers', '$totalQuestions'] }, 100] }, 
+              1
+            ] 
+          },
+          _id: 0
+        }
+      },
+      { $sort: { date: 1 } },
       { $limit: 7 }
     ]);
 
-    // Top performers
+    // Top performers with correct answer details
     const topPerformers = await Result.aggregate([
       { $match: matchConditions },
+      { $unwind: '$answers' },
       {
         $group: {
           _id: '$studentId',
           studentName: { $first: '$studentName' },
+          totalSubmissions: { $addToSet: '$_id' },
           averageScore: { $avg: '$percentage' },
-          totalQuizzes: { $sum: 1 },
-          bestScore: { $max: '$percentage' }
+          bestScore: { $max: '$percentage' },
+          totalQuestions: { $sum: 1 },
+          correctAnswers: { $sum: { $cond: ['$answers.isCorrect', 1, 0] } }
+        }
+      },
+      {
+        $project: {
+          studentName: 1,
+          totalQuizzes: { $size: '$totalSubmissions' },
+          averageScore: { $round: ['$averageScore', 1] },
+          bestScore: 1,
+          totalQuestions: 1,
+          correctAnswers: 1,
+          correctAnswerRate: { 
+            $round: [
+              { $multiply: [{ $divide: ['$correctAnswers', '$totalQuestions'] }, 100] }, 
+              1
+            ] 
+          },
+          _id: 0
         }
       },
       { $sort: { averageScore: -1 } },
@@ -1011,7 +1153,8 @@ export const getAnalytics = async (req, res) => {
       gradeDistribution: gradeDistribution.length,
       recentSubmissions: recentSubmissions.length,
       performanceTrends: performanceTrends.length,
-      topPerformers: topPerformers.length
+      topPerformers: topPerformers.length,
+      questionAnalytics: questionAnalytics.length
     });
 
     res.json({
@@ -1019,16 +1162,20 @@ export const getAnalytics = async (req, res) => {
       analytics: {
         overall: {
           totalSubmissions: overallStats[0]?.totalSubmissions || 0,
-          averageScore: Math.round(overallStats[0]?.averageScore || 0),
+          totalQuestions: overallStats[0]?.totalQuestions || 0,
+          correctAnswers: overallStats[0]?.correctAnswers || 0,
+          correctAnswerRate: overallStats[0]?.correctAnswerRate || 0,
+          averageScore: overallStats[0]?.averageScore || 0,
           highestScore: overallStats[0]?.highestScore || 0,
           lowestScore: overallStats[0]?.lowestScore || 0,
-          uniqueStudents: overallStats[0]?.totalStudents?.length || 0
+          uniqueStudents: overallStats[0]?.uniqueStudents || 0
         },
         modulePerformance,
         gradeDistribution,
-        recentSubmissions,
+        recentSubmissions: enhancedRecentSubmissions,
         performanceTrends,
-        topPerformers
+        topPerformers,
+        questionAnalytics
       }
     });
 
@@ -1050,14 +1197,24 @@ export const getQuizResults = async (req, res) => {
       lecturerId 
     })
     .sort({ percentage: -1 })
-    .select('studentName studentEmail percentage grade timeTaken createdAt submissionType')
+    .select('studentName studentEmail percentage grade timeTaken createdAt submissionType answers')
     .lean();
+
+    // Add correct answer counts to quiz results
+    const enhancedResults = results.map(result => ({
+      ...result,
+      totalQuestions: result.answers?.length || 0,
+      correctAnswers: result.answers?.filter(ans => ans.isCorrect).length || 0,
+      correctAnswerRate: result.answers?.length > 0 ? 
+        Math.round((result.answers.filter(ans => ans.isCorrect).length / result.answers.length) * 100) : 0,
+      answers: undefined // Remove detailed answers from response
+    }));
 
     console.log(`Found ${results.length} results for quiz ${id}`);
 
     res.json({
       success: true,
-      results
+      results: enhancedResults
     });
 
   } catch (error) {

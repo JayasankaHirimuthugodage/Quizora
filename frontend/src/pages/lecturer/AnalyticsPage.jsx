@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { quizService } from '../../services/quizService';
 import { moduleService } from '../../services/moduleService';
-import { BarChart3, Users, TrendingUp, Award, Calendar, Filter, Eye } from 'lucide-react';
+import { BarChart3, Users, TrendingUp, Award, CheckCircle, XCircle, Target, Filter, Eye } from 'lucide-react';
 
 const AnalyticsPage = () => {
   const [analytics, setAnalytics] = useState(null);
@@ -57,6 +57,15 @@ const AnalyticsPage = () => {
     return colors[grade] || 'bg-gray-100 text-gray-800';
   };
 
+  const getDifficultyColor = (difficulty) => {
+    const colors = {
+      'Easy': 'bg-green-100 text-green-800',
+      'Medium': 'bg-yellow-100 text-yellow-800',
+      'Hard': 'bg-red-100 text-red-800'
+    };
+    return colors[difficulty] || 'bg-gray-100 text-gray-800';
+  };
+
   const formatDate = (dateString) => {
     return new Date(dateString).toLocaleDateString('en-US', {
       month: 'short',
@@ -90,7 +99,7 @@ const AnalyticsPage = () => {
           <BarChart3 className="w-8 h-8 mr-3 text-blue-600" />
           Analytics Dashboard
         </h1>
-        <p className="text-gray-600 mt-2">Monitor student performance and quiz analytics</p>
+        <p className="text-gray-600 mt-2">Monitor student performance and quiz analytics with detailed insights</p>
       </div>
 
       {/* Filters */}
@@ -125,13 +134,26 @@ const AnalyticsPage = () => {
       </div>
 
       {/* Overview Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
         <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
           <div className="flex items-center">
             <Users className="w-8 h-8 text-blue-600" />
             <div className="ml-4">
               <p className="text-sm font-medium text-gray-600">Total Submissions</p>
               <p className="text-2xl font-bold text-gray-900">{analytics?.overall?.totalSubmissions || 0}</p>
+            </div>
+          </div>
+        </div>
+
+        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+          <div className="flex items-center">
+            <CheckCircle className="w-8 h-8 text-green-600" />
+            <div className="ml-4">
+              <p className="text-sm font-medium text-gray-600">Correct Answers</p>
+              <p className="text-2xl font-bold text-gray-900">{analytics?.overall?.correctAnswers || 0}</p>
+              <p className="text-xs text-gray-500">
+                {analytics?.overall?.correctAnswerRate || 0}% success rate
+              </p>
             </div>
           </div>
         </div>
@@ -148,20 +170,13 @@ const AnalyticsPage = () => {
 
         <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
           <div className="flex items-center">
-            <Award className="w-8 h-8 text-yellow-600" />
+            <Target className="w-8 h-8 text-purple-600" />
             <div className="ml-4">
-              <p className="text-sm font-medium text-gray-600">Highest Score</p>
-              <p className="text-2xl font-bold text-gray-900">{analytics?.overall?.highestScore || 0}%</p>
-            </div>
-          </div>
-        </div>
-
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-          <div className="flex items-center">
-            <Users className="w-8 h-8 text-purple-600" />
-            <div className="ml-4">
-              <p className="text-sm font-medium text-gray-600">Unique Students</p>
-              <p className="text-2xl font-bold text-gray-900">{analytics?.overall?.uniqueStudents || 0}</p>
+              <p className="text-sm font-medium text-gray-600">Total Questions</p>
+              <p className="text-2xl font-bold text-gray-900">{analytics?.overall?.totalQuestions || 0}</p>
+              <p className="text-xs text-gray-500">
+                {analytics?.overall?.uniqueStudents || 0} students
+              </p>
             </div>
           </div>
         </div>
@@ -194,7 +209,12 @@ const AnalyticsPage = () => {
                 <div className="flex justify-between items-start">
                   <div>
                     <p className="font-medium text-gray-900">{module.moduleCode}</p>
-                    <p className="text-sm text-gray-600">{module.uniqueStudents} students</p>
+                    <p className="text-sm text-gray-600">
+                      {module.uniqueStudents} students • {module.correctAnswers}/{module.totalQuestions} correct
+                    </p>
+                    <p className="text-xs text-green-600">
+                      {module.correctAnswerRate}% correct rate
+                    </p>
                   </div>
                   <span className="text-lg font-bold text-blue-600">{module.averageScore}%</span>
                 </div>
@@ -210,7 +230,7 @@ const AnalyticsPage = () => {
           <h3 className="text-lg font-semibold text-gray-900 mb-4">Top Performers</h3>
           <div className="space-y-3">
             {analytics?.topPerformers?.slice(0, 5).map((performer, index) => (
-              <div key={performer._id} className="flex items-center justify-between">
+              <div key={index} className="flex items-center justify-between">
                 <div className="flex items-center">
                   <div className={`w-8 h-8 rounded-full flex items-center justify-center text-white text-sm font-bold mr-3 ${
                     index === 0 ? 'bg-yellow-500' : index === 1 ? 'bg-gray-400' : index === 2 ? 'bg-orange-500' : 'bg-blue-500'
@@ -219,10 +239,15 @@ const AnalyticsPage = () => {
                   </div>
                   <div>
                     <p className="font-medium text-gray-900">{performer.studentName}</p>
-                    <p className="text-sm text-gray-600">{performer.totalQuizzes} quizzes</p>
+                    <p className="text-sm text-gray-600">
+                      {performer.totalQuizzes} quizzes • {performer.correctAnswers}/{performer.totalQuestions} correct
+                    </p>
+                    <p className="text-xs text-green-600">
+                      {performer.correctAnswerRate}% correct rate
+                    </p>
                   </div>
                 </div>
-                <span className="text-lg font-bold text-green-600">{Math.round(performer.averageScore)}%</span>
+                <span className="text-lg font-bold text-green-600">{performer.averageScore}%</span>
               </div>
             )) || (
               <p className="text-gray-500 text-center py-4">No performance data available</p>
@@ -232,13 +257,16 @@ const AnalyticsPage = () => {
 
         {/* Performance Trends */}
         <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-          <h3 className="text-lg font-semibold text-gray-900 mb-4">Recent Trends</h3>
+          <h3 className="text-lg font-semibold text-gray-900 mb-4">Daily Performance Trends</h3>
           <div className="space-y-3">
             {analytics?.performanceTrends?.map(trend => (
-              <div key={trend._id.date} className="flex items-center justify-between">
-                <span className="text-sm text-gray-600">{trend._id.date}</span>
+              <div key={trend.date} className="flex items-center justify-between">
+                <span className="text-sm text-gray-600">{trend.date}</span>
                 <div className="flex items-center space-x-2">
-                  <span className="text-sm font-medium">{Math.round(trend.averageScore)}%</span>
+                  <span className="text-sm font-medium">{trend.averageScore}%</span>
+                  <span className="text-xs text-green-600">
+                    {trend.correctAnswerRate}% correct
+                  </span>
                   <span className="text-xs text-gray-500">({trend.submissions} submissions)</span>
                 </div>
               </div>
@@ -248,6 +276,73 @@ const AnalyticsPage = () => {
           </div>
         </div>
       </div>
+
+      {/* Question Analytics */}
+      {analytics?.questionAnalytics?.length > 0 && (
+        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 mb-8">
+          <h3 className="text-lg font-semibold text-gray-900 mb-4">Most Challenging Questions</h3>
+          <div className="overflow-x-auto">
+            <table className="min-w-full divide-y divide-gray-200">
+              <thead className="bg-gray-50">
+                <tr>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Question
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Type
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Attempts
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Correct
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Success Rate
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Difficulty
+                  </th>
+                </tr>
+              </thead>
+              <tbody className="bg-white divide-y divide-gray-200">
+                {analytics.questionAnalytics.map((question, index) => (
+                  <tr key={index}>
+                    <td className="px-6 py-4 text-sm text-gray-900 max-w-xs truncate">
+                      {question.questionText}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <span className="px-2 py-1 text-xs font-medium rounded-full bg-blue-100 text-blue-800">
+                        {question.questionType}
+                      </span>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                      {question.totalAttempts}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                      {question.correctCount}/{question.totalAttempts}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                      <span className={`px-2 py-1 text-xs font-medium rounded-full ${
+                        question.correctRate >= 80 ? 'bg-green-100 text-green-800' :
+                        question.correctRate >= 50 ? 'bg-yellow-100 text-yellow-800' :
+                        'bg-red-100 text-red-800'
+                      }`}>
+                        {question.correctRate}%
+                      </span>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <span className={`px-2 py-1 text-xs font-medium rounded-full ${getDifficultyColor(question.difficulty)}`}>
+                        {question.difficulty}
+                      </span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
 
       {/* Recent Submissions */}
       <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
@@ -265,6 +360,9 @@ const AnalyticsPage = () => {
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Module
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Correct Answers
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Score
@@ -291,6 +389,18 @@ const AnalyticsPage = () => {
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
                       {submission.moduleCode}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                      <div className="flex items-center">
+                        <span className="font-medium">{submission.correctAnswers}/{submission.totalQuestions}</span>
+                        <span className={`ml-2 px-2 py-1 text-xs rounded-full ${
+                          submission.correctAnswerRate >= 80 ? 'bg-green-100 text-green-800' :
+                          submission.correctAnswerRate >= 50 ? 'bg-yellow-100 text-yellow-800' :
+                          'bg-red-100 text-red-800'
+                        }`}>
+                          {submission.correctAnswerRate}%
+                        </span>
+                      </div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
                       {submission.percentage}%
