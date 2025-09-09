@@ -1,9 +1,13 @@
-// backend\controllers\quizController.js
+// backend/controllers/quizController.js - COMPLETE CONTROLLER
 
 import Quiz from '../models/Quiz.js';
 import Module from '../models/Module.js';
 import Question from '../models/question.js';
 import User from '../models/User.js';
+
+// ============================
+// LECTURER ENDPOINTS
+// ============================
 
 export const getQuizzes = async (req, res) => {
   try {
@@ -46,7 +50,31 @@ export const createQuiz = async (req, res) => {
       maxAttempts
     } = req.body;
 
-    // Verify module exists and belongs to lecturer
+    // Validate required fields
+    if (!title || !moduleId || !startDateTime || !endDateTime || !duration) {
+      return res.status(400).json({ 
+        message: 'Missing required fields: title, moduleId, startDateTime, endDateTime, duration' 
+      });
+    }
+
+    // Validate date logic
+    const start = new Date(startDateTime);
+    const end = new Date(endDateTime);
+    const now = new Date();
+
+    if (start >= end) {
+      return res.status(400).json({ 
+        message: 'Start date must be before end date' 
+      });
+    }
+
+    if (start <= now) {
+      return res.status(400).json({ 
+        message: 'Start date must be in the future' 
+      });
+    }
+
+    // Validate module exists and belongs to lecturer
     const module = await Module.findOne({
       _id: moduleId,
       createdBy: req.user._id,
@@ -54,26 +82,14 @@ export const createQuiz = async (req, res) => {
     });
 
     if (!module) {
-      return res.status(404).json({ message: 'Module not found or access denied' });
+      return res.status(404).json({ 
+        message: 'Module not found or you do not have permission to create quizzes for this module' 
+      });
     }
 
-    // Validate dates
-    const start = new Date(startDateTime);
-    const end = new Date(endDateTime);
-    const now = new Date();
-
-    if (start < now) {
-      return res.status(400).json({ message: 'Quiz start time must be in the future' });
-    }
-
-    if (end <= start) {
-      return res.status(400).json({ message: 'Quiz end time must be after start time' });
-    }
-
-    // Count questions for this module
+    // Check if there are questions available for this module
     const questionCount = await Question.countDocuments({
       moduleId: moduleId,
-      createdBy: req.user._id,
       isActive: true
     });
 
@@ -161,77 +177,35 @@ export const updateQuiz = async (req, res) => {
       
       if (invalidFields.length > 0) {
         return res.status(400).json({ 
-          message: `Quiz is currently active. Only these fields can be updated: ${allowedFields.join(', ')}` 
+          message: `Quiz is currently active. Only these fields can be modified: ${allowedFields.join(', ')}`,
+          allowedFields,
+          invalidFields
         });
       }
     }
 
-    // Validate dates if being updated
-    if (updateData.startDateTime || updateData.endDateTime) {
-      const start = new Date(updateData.startDateTime || quiz.startDateTime);
-      const end = new Date(updateData.endDateTime || quiz.endDateTime);
-
-      // If quiz hasn't started yet, allow start time changes
-      if (updateData.startDateTime && now >= quizStart) {
+    // Validate new end date if provided
+    if (updateData.endDateTime) {
+      const newEndDate = new Date(updateData.endDateTime);
+      if (isQuizActive && newEndDate <= now) {
         return res.status(400).json({ 
-          message: 'Cannot change start time of a quiz that has already started' 
+          message: 'New end date must be in the future for active quiz' 
         });
       }
-
-      if (updateData.startDateTime && start < now) {
-        return res.status(400).json({ 
-          message: 'Quiz start time must be in the future' 
-        });
-      }
-
-      if (end <= start) {
-        return res.status(400).json({ 
-          message: 'Quiz end time must be after start time' 
-        });
-      }
-
-      updateData.startDateTime = start;
-      updateData.endDateTime = end;
     }
 
-    // Update question count if module changed (only for scheduled quizzes)
-    if (updateData.moduleId && updateData.moduleId !== quiz.moduleId.toString() && !isQuizActive) {
-      const module = await Module.findOne({
-        _id: updateData.moduleId,
-        createdBy: req.user._id,
-        isActive: true
-      });
+    // Update quiz
+    Object.assign(quiz, updateData);
+    quiz.updatedAt = new Date();
+    await quiz.save();
 
-      if (!module) {
-        return res.status(404).json({ message: 'Module not found' });
-      }
-
-      const questionCount = await Question.countDocuments({
-        moduleId: updateData.moduleId,
-        createdBy: req.user._id,
-        isActive: true
-      });
-
-      if (questionCount === 0) {
-        return res.status(400).json({ 
-          message: 'No questions found for selected module' 
-        });
-      }
-
-      updateData.moduleCode = module.moduleCode;
-      updateData.questionCount = questionCount;
-    }
-
-    const updatedQuiz = await Quiz.findByIdAndUpdate(
-      id,
-      updateData,
-      { new: true, runValidators: true }
-    ).populate('moduleId', 'moduleCode moduleName');
+    await quiz.populate('moduleId', 'moduleCode moduleName');
 
     res.json({
       success: true,
       message: 'Quiz updated successfully',
-      quiz: updatedQuiz
+      quiz,
+      warning: isQuizActive ? 'Quiz is currently active. Limited fields were updated.' : null
     });
   } catch (error) {
     console.error('Update quiz error:', error);
@@ -253,39 +227,8 @@ export const deleteQuiz = async (req, res) => {
       return res.status(404).json({ message: 'Quiz not found' });
     }
 
-    const now = new Date();
-    const quizStart = new Date(quiz.startDateTime);
-    const quizEnd = new Date(quiz.endDateTime);
-    
-    // Check if quiz is currently active
-    const isQuizActive = now >= quizStart && now <= quizEnd;
-    
-    // Check if quiz has ended
-    const hasQuizEnded = now > quizEnd;
-
-    if (hasQuizEnded) {
-      return res.status(400).json({ 
-        message: 'Cannot delete quiz that has already ended' 
-      });
-    }
-
-    // Allow deletion of active quizzes with warning
-    if (isQuizActive) {
-      // Soft delete and set status to cancelled
-      quiz.isActive = false;
-      quiz.status = 'cancelled';
-      await quiz.save();
-
-      return res.json({
-        success: true,
-        message: 'Active quiz has been cancelled successfully',
-        warning: 'Quiz was active and has been cancelled. Students taking the quiz will be notified.'
-      });
-    }
-
-    // Regular deletion for scheduled quizzes
+    // Simple solution: just set isActive to false - don't change status
     quiz.isActive = false;
-    quiz.status = 'cancelled';
     await quiz.save();
 
     res.json({
@@ -322,7 +265,6 @@ export const getQuizById = async (req, res) => {
   }
 };
 
-// New endpoint to check if quiz can be edited
 export const getQuizEditability = async (req, res) => {
   try {
     const { id } = req.params;
@@ -347,7 +289,7 @@ export const getQuizEditability = async (req, res) => {
 
     let editability = {
       canEdit: false,
-      canDelete: false,
+      canDelete: true,
       restrictions: [],
       status: 'unknown'
     };
@@ -355,8 +297,8 @@ export const getQuizEditability = async (req, res) => {
     if (hasEnded) {
       editability = {
         canEdit: false,
-        canDelete: false,
-        restrictions: ['Quiz has ended'],
+        canDelete: true,
+        restrictions: ['Quiz has ended - editing disabled'],
         status: 'ended'
       };
     } else if (isActive) {
@@ -393,7 +335,51 @@ export const getQuizEditability = async (req, res) => {
   }
 };
 
-// Student-specific endpoints (unchanged)
+export const getQuizStats = async (req, res) => {
+  try {
+    const stats = await Quiz.aggregate([
+      { $match: { createdBy: req.user._id, isActive: true } },
+      {
+        $group: {
+          _id: null,
+          totalQuizzes: { $sum: 1 },
+          scheduled: { $sum: { $cond: [{ $eq: ['$status', 'scheduled'] }, 1, 0] } },
+          active: { $sum: { $cond: [{ $eq: ['$status', 'active'] }, 1, 0] } },
+          completed: { $sum: { $cond: [{ $eq: ['$status', 'completed'] }, 1, 0] } }
+        }
+      }
+    ]);
+
+    const moduleStats = await Quiz.aggregate([
+      { $match: { createdBy: req.user._id, isActive: true } },
+      {
+        $group: {
+          _id: '$moduleCode',
+          count: { $sum: 1 }
+        }
+      }
+    ]);
+
+    res.json({
+      success: true,
+      stats: {
+        totalQuizzes: stats[0]?.totalQuizzes || 0,
+        scheduled: stats[0]?.scheduled || 0,
+        active: stats[0]?.active || 0,
+        completed: stats[0]?.completed || 0,
+        moduleStats
+      }
+    });
+  } catch (error) {
+    console.error('Get quiz stats error:', error);
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+};
+
+// ============================
+// STUDENT ENDPOINTS
+// ============================
+
 export const getStudentQuizzes = async (req, res) => {
   try {
     const student = req.user;
@@ -406,8 +392,8 @@ export const getStudentQuizzes = async (req, res) => {
       eligibilityCriteria: {
         $elemMatch: {
           degreeTitle: student.degreeTitle,
-          year: student.currentYear,
-          semester: student.currentSemester
+          year: student.academicYear || student.currentYear,
+          semester: student.semester || student.currentSemester
         }
       }
     };
@@ -446,17 +432,29 @@ export const verifyQuizPasscode = async (req, res) => {
     }
 
     // Check if student is eligible
-    if (!quiz.isStudentEligible(req.user)) {
+    const student = req.user;
+    const isEligible = quiz.eligibilityCriteria.some(criteria => 
+      criteria.degreeTitle === student.degreeTitle &&
+      criteria.year === (student.academicYear || student.currentYear) &&
+      criteria.semester === (student.semester || student.currentSemester)
+    );
+
+    if (!isEligible) {
       return res.status(403).json({ message: 'You are not eligible for this quiz' });
     }
 
     // Check if quiz is currently active
-    if (!quiz.isCurrentlyActive) {
+    const now = new Date();
+    const quizStart = new Date(quiz.startDateTime);
+    const quizEnd = new Date(quiz.endDateTime);
+    const isCurrentlyActive = now >= quizStart && now <= quizEnd;
+
+    if (!isCurrentlyActive) {
       return res.status(400).json({ message: 'Quiz is not currently active' });
     }
 
     // Verify passcode
-    if (quiz.passcode !== passcode) {
+    if (quiz.passcode && quiz.passcode !== passcode) {
       return res.status(401).json({ message: 'Invalid passcode' });
     }
 
@@ -500,12 +498,24 @@ export const getQuizQuestions = async (req, res) => {
     }
 
     // Check if student is eligible
-    if (!quiz.isStudentEligible(req.user)) {
+    const student = req.user;
+    const isEligible = quiz.eligibilityCriteria.some(criteria => 
+      criteria.degreeTitle === student.degreeTitle &&
+      criteria.year === (student.academicYear || student.currentYear) &&
+      criteria.semester === (student.semester || student.currentSemester)
+    );
+
+    if (!isEligible) {
       return res.status(403).json({ message: 'You are not eligible for this quiz' });
     }
 
     // Check if quiz is currently active
-    if (!quiz.isCurrentlyActive) {
+    const now = new Date();
+    const quizStart = new Date(quiz.startDateTime);
+    const quizEnd = new Date(quiz.endDateTime);
+    const isCurrentlyActive = now >= quizStart && now <= quizEnd;
+
+    if (!isCurrentlyActive) {
       return res.status(400).json({ message: 'Quiz is not currently active' });
     }
 
@@ -532,47 +542,6 @@ export const getQuizQuestions = async (req, res) => {
     });
   } catch (error) {
     console.error('Get quiz questions error:', error);
-    res.status(500).json({ message: 'Server error', error: error.message });
-  }
-};
-
-export const getQuizStats = async (req, res) => {
-  try {
-    const stats = await Quiz.aggregate([
-      { $match: { createdBy: req.user._id, isActive: true } },
-      {
-        $group: {
-          _id: null,
-          totalQuizzes: { $sum: 1 },
-          scheduled: { $sum: { $cond: [{ $eq: ['$status', 'scheduled'] }, 1, 0] } },
-          active: { $sum: { $cond: [{ $eq: ['$status', 'active'] }, 1, 0] } },
-          completed: { $sum: { $cond: [{ $eq: ['$status', 'completed'] }, 1, 0] } }
-        }
-      }
-    ]);
-
-    const moduleStats = await Quiz.aggregate([
-      { $match: { createdBy: req.user._id, isActive: true } },
-      {
-        $group: {
-          _id: '$moduleCode',
-          count: { $sum: 1 }
-        }
-      }
-    ]);
-
-    res.json({
-      success: true,
-      stats: {
-        totalQuizzes: stats[0]?.totalQuizzes || 0,
-        scheduled: stats[0]?.scheduled || 0,
-        active: stats[0]?.active || 0,
-        completed: stats[0]?.completed || 0,
-        moduleStats
-      }
-    });
-  } catch (error) {
-    console.error('Get quiz stats error:', error);
     res.status(500).json({ message: 'Server error', error: error.message });
   }
 };
