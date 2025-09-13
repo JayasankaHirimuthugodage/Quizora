@@ -1,4 +1,4 @@
-//server.js
+// backend/server.js
 
 import express from 'express';
 import cors from 'cors';
@@ -16,6 +16,7 @@ import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
 import path from 'path';
 import fs from 'fs';
+import quizStatusScheduler from './services/quizStatusScheduler.js';
 
 dotenv.config();
 
@@ -93,9 +94,13 @@ const createDefaultAdmin = async () => {
   }
 };
 
-// Initialize default admin after DB connection
+// Initialize default admin and start quiz scheduler after DB connection
 mongoose.connection.once('open', () => {
   createDefaultAdmin();
+  
+  // Start the quiz status scheduler (runs every minute)
+  quizStatusScheduler.start(1);
+  console.log('Quiz status scheduler started');
 });
 
 // Routes
@@ -110,7 +115,8 @@ app.get('/api/health', (req, res) => {
   res.json({ 
     message: 'Quizora API is running', 
     timestamp: new Date(),
-    version: '1.0.0'
+    version: '1.0.0',
+    quizScheduler: quizStatusScheduler.getStatus()
   });
 });
 
@@ -170,7 +176,27 @@ app.use((err, req, res, next) => {
   });
 });
 
+// Graceful shutdown handling
+process.on('SIGTERM', () => {
+  console.log('SIGTERM received, shutting down gracefully');
+  quizStatusScheduler.stop();
+  mongoose.connection.close(() => {
+    console.log('MongoDB connection closed');
+    process.exit(0);
+  });
+});
+
+process.on('SIGINT', () => {
+  console.log('SIGINT received, shutting down gracefully');
+  quizStatusScheduler.stop();
+  mongoose.connection.close(() => {
+    console.log('MongoDB connection closed');
+    process.exit(0);
+  });
+});
+
 const PORT = process.env.PORT || 5001;
+
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
 });

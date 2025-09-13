@@ -1,20 +1,15 @@
-import api from './api';
+// frontend/src/services/quizService.js
 
-const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:5001';
+import api from './api';
 
 export const quizService = {
   getQuizzes: async (params = {}) => {
-    const response = await api.get('/quizzes', params);
+    const response = await api.get('/quizzes', { params });
     return response;
   },
 
   createQuiz: async (quizData) => {
     const response = await api.post('/quizzes', quizData);
-    return response;
-  },
-
-  getQuizById: async (id) => {
-    const response = await api.get(`/quizzes/${id}`);
     return response;
   },
 
@@ -28,8 +23,8 @@ export const quizService = {
     return response;
   },
 
-  getQuizStats: async () => {
-    const response = await api.get('/quizzes/stats');
+  getQuizById: async (id) => {
+    const response = await api.get(`/quizzes/${id}`);
     return response;
   },
 
@@ -38,7 +33,22 @@ export const quizService = {
     return response;
   },
 
-  // Student quiz methods
+  getQuizStats: async () => {
+    const response = await api.get('/quizzes/stats');
+    return response;
+  },
+
+  getAnalytics: async (params = {}) => {
+    const response = await api.get('/quizzes/analytics', { params });
+    return response;
+  },
+
+  getQuizResults: async (id) => {
+    const response = await api.get(`/quizzes/${id}/results`);
+    return response;
+  },
+
+  // Student endpoints
   getStudentQuizzes: async () => {
     const response = await api.get('/quizzes/student/available');
     return response;
@@ -59,14 +69,20 @@ export const quizService = {
     return response;
   },
 
-  // Analytics methods
-  getAnalytics: async (params = {}) => {
-    const response = await api.get('/quizzes/analytics', params);
+  // Manual status update endpoint (NEW)
+  updateQuizStatuses: async () => {
+    const response = await api.post('/quizzes/update-statuses');
     return response;
   },
 
-  getQuizResults: async (quizId) => {
-    const response = await api.get(`/quizzes/${quizId}/results`);
+  // Debug endpoints (temporary)
+  debugQuizData: async (quizId) => {
+    const response = await api.get(`/quizzes/${quizId}/debug-data`);
+    return response;
+  },
+
+  testGradeCalculation: async () => {
+    const response = await api.get('/quizzes/test-grade');
     return response;
   }
 };

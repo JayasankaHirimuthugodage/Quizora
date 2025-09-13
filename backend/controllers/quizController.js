@@ -1,4 +1,4 @@
-// backend/controllers/quizController.js - COMPLETE CONTROLLER WITH ENHANCED ANALYTICS
+// backend/controllers/quizController.js
 
 import Quiz from '../models/Quiz.js';
 import Module from '../models/Module.js';
@@ -33,7 +33,6 @@ export const debugQuizData = async (req, res) => {
     console.log('=== QUIZ DEBUG ===');
     console.log('Quiz ID searched:', id);
     
-    // Check if quiz exists
     const quiz = await Quiz.findById(id);
     console.log('Quiz found:', !!quiz);
     
@@ -42,15 +41,12 @@ export const debugQuizData = async (req, res) => {
         id: quiz._id,
         title: quiz.title,
         passcode: quiz.passcode,
-        passcodeType: typeof quiz.passcode,
-        passcodeLength: quiz.passcode?.length,
         status: quiz.status,
         isActive: quiz.isActive,
         eligibilityCriteria: quiz.eligibilityCriteria
       });
     }
     
-    // Also check all quizzes
     const allQuizzes = await Quiz.find({ isActive: true }).select('title passcode status');
     console.log('All active quizzes:', allQuizzes);
     
@@ -112,13 +108,17 @@ export const getQuizzes = async (req, res) => {
     const { status, moduleCode } = req.query;
     const query = { createdBy: req.user._id, isActive: true };
 
-    if (status) query.status = status;
     if (moduleCode) query.moduleCode = moduleCode;
 
-    const quizzes = await Quiz.find(query)
+    let quizzes = await Quiz.find(query)
       .populate('moduleId', 'moduleCode moduleName')
       .populate('createdBy', 'firstName lastName')
       .sort({ createdAt: -1 });
+
+    // Filter by status if requested
+    if (status && status !== 'all') {
+      quizzes = quizzes.filter(quiz => quiz.status === status);
+    }
 
     res.json({
       success: true,
@@ -134,29 +134,21 @@ export const createQuiz = async (req, res) => {
   try {
     const {
       title,
+      description,
       moduleId,
-      duration,
       startDateTime,
       endDateTime,
+      duration,
+      eligibilityCriteria,
       instructions,
       passcode,
-      eligibilityCriteria,
-      shuffleQuestions = false,
-      showResultsImmediately = false,
-      allowLateSubmission = false
+      shuffleQuestions,
+      showResultsImmediately,
+      allowLateSubmission,
+      maxAttempts
     } = req.body;
 
-    console.log('Creating quiz with data:', {
-      title,
-      moduleId,
-      duration,
-      startDateTime,
-      endDateTime,
-      passcode,
-      eligibilityCriteria
-    });
-
-    // Verify module exists and belongs to lecturer
+    // Validate module exists
     const module = await Module.findOne({
       _id: moduleId,
       createdBy: req.user._id,
@@ -164,75 +156,73 @@ export const createQuiz = async (req, res) => {
     });
 
     if (!module) {
-      return res.status(404).json({ message: 'Module not found or access denied' });
+      return res.status(404).json({ message: 'Module not found' });
+    }
+
+    // Validate dates
+    const start = new Date(startDateTime);
+    const end = new Date(endDateTime);
+    const now = new Date();
+
+    if (start <= now) {
+      return res.status(400).json({ 
+        message: 'Start date must be in the future' 
+      });
+    }
+
+    if (end <= start) {
+      return res.status(400).json({ 
+        message: 'End date must be after start date' 
+      });
     }
 
     // Check if there are questions for this module
     const questionCount = await Question.countDocuments({
       moduleId: module._id,
+      createdBy: req.user._id,
       isActive: true
     });
 
     if (questionCount === 0) {
       return res.status(400).json({ 
-        message: 'Cannot create quiz: No questions found for this module' 
+        message: 'No questions found for this module. Add questions before creating a quiz.' 
       });
     }
 
-    const quiz = new Quiz({
-      title: title.trim(),
-      moduleId: module._id,
+    const quizData = {
+      title,
+      description,
+      moduleId,
       moduleCode: module.moduleCode,
       moduleYear: module.moduleYear,
       moduleSemester: module.moduleSemester,
+      startDateTime: start,
+      endDateTime: end,
       duration,
-      startDateTime: new Date(startDateTime),
-      endDateTime: new Date(endDateTime),
-      instructions: instructions.trim(),
-      passcode: passcode.trim(),
       eligibilityCriteria,
-      shuffleQuestions,
-      showResultsImmediately,
-      allowLateSubmission,
-      createdBy: req.user._id,
-      status: 'scheduled'
-    });
+      instructions,
+      passcode,
+      questionCount,
+      shuffleQuestions: shuffleQuestions || false,
+      showResultsImmediately: showResultsImmediately || false,
+      allowLateSubmission: allowLateSubmission || false,
+      maxAttempts: maxAttempts || 1,
+      status: 'scheduled',
+      createdBy: req.user._id
+    };
 
+    const quiz = new Quiz(quizData);
     await quiz.save();
-    console.log('Quiz created successfully:', quiz._id);
+
+    await quiz.populate('moduleId', 'moduleCode moduleName');
 
     res.status(201).json({
       success: true,
-      quiz,
-      message: 'Quiz created successfully'
-    });
-
-  } catch (error) {
-    console.error('Create quiz error:', error);
-    res.status(500).json({ message: 'Server error', error: error.message });
-  }
-};
-
-export const getQuizById = async (req, res) => {
-  try {
-    const { id } = req.params;
-    
-    const quiz = await Quiz.findOne({
-      _id: id,
-      createdBy: req.user._id,
-      isActive: true
-    }).populate('moduleId', 'moduleCode moduleName');
-
-    if (!quiz) {
-      return res.status(404).json({ message: 'Quiz not found' });
-    }
-
-    res.json({
-      success: true,
+      message: 'Quiz created successfully',
       quiz
     });
   } catch (error) {
-    console.error('Get quiz by ID error:', error);
+    console.error('Create quiz error:', error);
     res.status(500).json({ message: 'Server error', error: error.message });
   }
 };
@@ -240,9 +230,6 @@ export const getQuizById = async (req, res) => {
 export const updateQuiz = async (req, res) => {
   try {
     const { id } = req.params;
-    const updateData = req.body;
-
-    console.log('Updating quiz:', id, 'with data:', updateData);
 
     const quiz = await Quiz.findOne({
       _id: id,
@@ -254,41 +241,56 @@ export const updateQuiz = async (req, res) => {
       return res.status(404).json({ message: 'Quiz not found' });
     }
 
-    // Check if quiz can be edited
     const now = new Date();
-    const hasStarted = now >= new Date(quiz.startDateTime);
-    const hasEnded = now >= new Date(quiz.endDateTime);
-
-    if (hasEnded) {
+    const quizStart = new Date(quiz.startDateTime);
+    const quizEnd = new Date(quiz.endDateTime);
+    
+    const isQuizActive = now >= quizStart && now <= quizEnd;
+    const hasQuizEnded = now > quizEnd;
+    
+    if (hasQuizEnded) {
       return res.status(400).json({ 
-        message: 'Cannot edit quiz: Quiz has already ended' 
+        message: 'Cannot edit quiz that has already ended' 
       });
     }
 
-    // If quiz has started, only allow certain fields to be updated
-    if (hasStarted) {
+    const updateData = { ...req.body };
+
+    if (isQuizActive) {
       const allowedFields = ['endDateTime', 'allowLateSubmission', 'instructions'];
-      const updateKeys = Object.keys(updateData);
-      const invalidFields = updateKeys.filter(key => !allowedFields.includes(key));
+      const requestedFields = Object.keys(updateData);
+      const invalidFields = requestedFields.filter(field => !allowedFields.includes(field));
       
       if (invalidFields.length > 0) {
         return res.status(400).json({ 
-          message: `Cannot modify ${invalidFields.join(', ')} after quiz has started` 
+          message: `Quiz is currently active. Only these fields can be modified: ${allowedFields.join(', ')}`,
+          allowedFields,
+          invalidFields
+        });
+      }
+    }
+
+    if (updateData.endDateTime) {
+      const newEndDate = new Date(updateData.endDateTime);
+      if (isQuizActive && newEndDate <= now) {
+        return res.status(400).json({ 
+          message: 'New end date must be in the future for active quiz' 
         });
       }
     }
 
     Object.assign(quiz, updateData);
+    quiz.updatedAt = new Date();
     await quiz.save();
 
-    console.log('Quiz updated successfully');
+    await quiz.populate('moduleId', 'moduleCode moduleName');
 
     res.json({
       success: true,
+      message: 'Quiz updated successfully',
       quiz,
-      message: 'Quiz updated successfully'
+      warning: isQuizActive ? 'Quiz is currently active. Limited fields were updated.' : null
     });
-
   } catch (error) {
     console.error('Update quiz error:', error);
     res.status(500).json({ message: 'Server error', error: error.message });
@@ -309,26 +311,55 @@ export const deleteQuiz = async (req, res) => {
       return res.status(404).json({ message: 'Quiz not found' });
     }
 
-    // Check if quiz has submissions
-    const submissionCount = await Result.countDocuments({ quizId: id });
-    if (submissionCount > 0) {
-      return res.status(400).json({ 
-        message: 'Cannot delete quiz: Students have already submitted attempts' 
+    const now = new Date();
+    const quizStart = new Date(quiz.startDateTime);
+    const quizEnd = new Date(quiz.endDateTime);
+    const isActive = now >= quizStart && now <= quizEnd;
+
+    if (isActive) {
+      quiz.status = 'cancelled';
+      await quiz.save();
+      
+      res.json({
+        success: true,
+        message: 'Active quiz has been cancelled',
+        warning: 'Quiz was active and has been cancelled instead of deleted'
+      });
+    } else {
+      quiz.isActive = false;
+      await quiz.save();
+      
+      res.json({
+        success: true,
+        message: 'Quiz deleted successfully'
       });
     }
+  } catch (error) {
+    console.error('Delete quiz error:', error);
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+};
 
-    quiz.isActive = false;
-    await quiz.save();
+export const getQuizById = async (req, res) => {
+  try {
+    const { id } = req.params;
 
-    console.log('Quiz deleted successfully:', id);
+    const quiz = await Quiz.findOne({
+      _id: id,
+      createdBy: req.user._id,
+      isActive: true
+    }).populate('moduleId', 'moduleCode moduleName');
+
+    if (!quiz) {
+      return res.status(404).json({ message: 'Quiz not found' });
+    }
 
     res.json({
       success: true,
-      message: 'Quiz deleted successfully'
+      quiz
     });
-
   } catch (error) {
-    console.error('Delete quiz error:', error);
+    console.error('Get quiz by ID error:', error);
     res.status(500).json({ message: 'Server error', error: error.message });
   }
 };
@@ -336,7 +367,7 @@ export const deleteQuiz = async (req, res) => {
 export const getQuizEditability = async (req, res) => {
   try {
     const { id } = req.params;
-    
+
     const quiz = await Quiz.findOne({
       _id: id,
       createdBy: req.user._id,
@@ -348,12 +379,15 @@ export const getQuizEditability = async (req, res) => {
     }
 
     const now = new Date();
-    const hasStarted = now >= new Date(quiz.startDateTime);
-    const hasEnded = now >= new Date(quiz.endDateTime);
-    const isActive = hasStarted && !hasEnded;
+    const start = new Date(quiz.startDateTime);
+    const end = new Date(quiz.endDateTime);
+    
+    const isActive = now >= start && now <= end;
+    const hasEnded = now > end;
 
     let editability;
-    if (hasEnded) {
+    
+    if (hasEnded || quiz.status === 'completed') {
       editability = {
         canEdit: false,
         canDelete: true,
@@ -442,41 +476,31 @@ export const getQuizStats = async (req, res) => {
 export const getStudentQuizzes = async (req, res) => {
   try {
     const student = req.user;
-    const now = new Date();
+    console.log('Getting quizzes for student:', student.email);
 
-    console.log('Getting quizzes for student:', {
-      id: student._id,
-      degreeTitle: student.degreeTitle,
-      academicYear: student.academicYear,
-      currentYear: student.currentYear,
-      semester: student.semester,
-      currentSemester: student.currentSemester
-    });
-
-    const query = {
+    const quizzes = await Quiz.find({
       isActive: true,
       status: { $in: ['scheduled', 'active'] },
-      startDateTime: { $lte: new Date(now.getTime() + 24 * 60 * 60 * 1000) },
-      eligibilityCriteria: {
+      'eligibilityCriteria': {
         $elemMatch: {
           degreeTitle: student.degreeTitle,
-          year: student.academicYear || student.currentYear,
-          semester: student.semester || student.currentSemester
+          year: student.currentYear || student.academicYear,
+          semester: student.currentSemester || student.semester
         }
       }
-    };
+    })
+    .populate('moduleId', 'moduleCode moduleName')
+    .sort({ startDateTime: 1 });
 
-    console.log('Quiz query:', JSON.stringify(query, null, 2));
+    const availableQuizzes = quizzes.filter(quiz => {
+      return quiz.status === 'scheduled' || quiz.status === 'active';
+    });
 
-    const quizzes = await Quiz.find(query)
-      .populate('moduleId', 'moduleCode moduleName')
-      .sort({ startDateTime: 1 });
-
-    console.log(`Found ${quizzes.length} quizzes for student`);
+    console.log(`Found ${availableQuizzes.length} available quizzes for student`);
 
     res.json({
       success: true,
-      quizzes
+      quizzes: availableQuizzes
     });
   } catch (error) {
     console.error('Get student quizzes error:', error);
@@ -491,13 +515,11 @@ export const verifyQuizPasscode = async (req, res) => {
 
     console.log('=== PASSCODE VERIFICATION ===');
     console.log('Quiz ID:', id);
-    console.log('Received passcode:', `"${passcode}"`);
-    console.log('Passcode type:', typeof passcode);
+    console.log('Provided passcode:', `"${passcode}"`);
 
-    // Find quiz with detailed logging
-    const quiz = await Quiz.findOne({
-      _id: id,
-      isActive: true
+    const quiz = await Quiz.findOne({ 
+      _id: id, 
+      isActive: true 
     }).populate('moduleId', 'moduleCode moduleName');
 
     console.log('Quiz found:', !!quiz);
@@ -510,41 +532,26 @@ export const verifyQuizPasscode = async (req, res) => {
     console.log('Quiz details:', {
       title: quiz.title,
       passcode: `"${quiz.passcode}"`,
-      passcodeType: typeof quiz.passcode,
       status: quiz.status
     });
 
-    // Check if quiz was cancelled
     if (quiz.status === 'cancelled') {
       return res.status(400).json({ message: 'This quiz has been cancelled by the instructor' });
     }
 
-    // Check if student is eligible
     const student = req.user;
     console.log('Student details:', {
       id: student._id,
       name: `${student.firstName} ${student.lastName}`,
       degreeTitle: student.degreeTitle,
-      academicYear: student.academicYear,
       currentYear: student.currentYear,
-      semester: student.semester,
-      currentSemester: student.currentSemester
+      semester: student.currentSemester
     });
-
-    console.log('Quiz eligibility criteria:', quiz.eligibilityCriteria);
 
     const isEligible = quiz.eligibilityCriteria.some(criteria => {
       const degreeMatch = criteria.degreeTitle === student.degreeTitle;
       const yearMatch = criteria.year === (student.academicYear || student.currentYear);
       const semesterMatch = criteria.semester === (student.semester || student.currentSemester);
-      
-      console.log('Checking criteria:', {
-        criteria: criteria,
-        degreeMatch,
-        yearMatch,
-        semesterMatch,
-        overall: degreeMatch && yearMatch && semesterMatch
-      });
       
       return degreeMatch && yearMatch && semesterMatch;
     });
@@ -554,7 +561,6 @@ export const verifyQuizPasscode = async (req, res) => {
       return res.status(403).json({ message: 'You are not eligible for this quiz' });
     }
 
-    // Check if quiz is currently active
     const now = new Date();
     const quizStart = new Date(quiz.startDateTime);
     const quizEnd = new Date(quiz.endDateTime);
@@ -564,63 +570,65 @@ export const verifyQuizPasscode = async (req, res) => {
       now: now.toISOString(),
       start: quizStart.toISOString(),
       end: quizEnd.toISOString(),
-      isActive: isCurrentlyActive
+      isCurrentlyActive
     });
 
     if (!isCurrentlyActive) {
-      if (now < quizStart) {
-        return res.status(400).json({ message: 'Quiz has not started yet' });
-      } else {
-        return res.status(400).json({ message: 'Quiz has ended' });
-      }
+      return res.status(400).json({ 
+        message: quiz.status === 'scheduled' ? 'Quiz has not started yet' : 'Quiz has ended'
+      });
     }
 
-    // Check if student already submitted
+    const passcodeMatch = String(passcode).trim() === String(quiz.passcode).trim();
+    console.log('Passcode comparison:', {
+      provided: `"${String(passcode).trim()}"`,
+      expected: `"${String(quiz.passcode).trim()}"`,
+      match: passcodeMatch
+    });
+
+    if (!passcodeMatch) {
+      return res.status(401).json({ message: 'Invalid passcode' });
+    }
+
     const existingResult = await Result.findOne({
       studentId: student._id,
-      quizId: id
+      quizId: quiz._id
     });
 
     if (existingResult) {
-      return res.status(400).json({ message: 'You have already submitted this quiz' });
+      return res.status(400).json({ 
+        message: 'You have already taken this quiz',
+        result: {
+          score: existingResult.score,
+          totalMarks: existingResult.totalMarks,
+          percentage: existingResult.percentage,
+          grade: existingResult.grade
+        }
+      });
     }
 
-    // Verify passcode - normalize both values
-    const quizPasscode = String(quiz.passcode || '').trim();
-    const inputPasscode = String(passcode || '').trim();
-    
-    console.log('Passcode comparison:', {
-      expected: `"${quizPasscode}"`,
-      received: `"${inputPasscode}"`,
-      expectedLength: quizPasscode.length,
-      receivedLength: inputPasscode.length,
-      match: quizPasscode === inputPasscode
-    });
-    
-    if (quizPasscode !== inputPasscode) {
-      console.log('PASSCODE MISMATCH!');
-      return res.status(400).json({ message: 'Invalid passcode' });
-    }
-
-    console.log('Passcode verified successfully!');
+    console.log('Passcode verification successful');
 
     res.json({
       success: true,
+      message: 'Passcode verified successfully',
       quiz: {
         _id: quiz._id,
         title: quiz.title,
         moduleCode: quiz.moduleCode,
-        moduleName: quiz.moduleId.moduleName,
         duration: quiz.duration,
-        instructions: quiz.instructions,
         startDateTime: quiz.startDateTime,
-        endDateTime: quiz.endDateTime
-      },
-      message: 'Passcode verified successfully'
+        endDateTime: quiz.endDateTime,
+        instructions: quiz.instructions,
+        questionCount: quiz.questionCount,
+        shuffleQuestions: quiz.shuffleQuestions
+      }
     });
 
   } catch (error) {
-    console.error('Verify quiz passcode error:', error);
+    console.error('=== PASSCODE VERIFICATION ERROR ===');
+    console.error('Error message:', error.message);
+    console.error('Error stack:', error.stack);
     res.status(500).json({ message: 'Server error', error: error.message });
   }
 };
@@ -630,190 +638,199 @@ export const getQuizQuestions = async (req, res) => {
     const { id } = req.params;
     const student = req.user;
 
-    console.log('Getting quiz questions for quiz:', id, 'student:', student._id);
+    console.log('=== GET QUIZ QUESTIONS ===');
+    console.log('Quiz ID:', id);
+    console.log('Student:', student.email);
 
-    const quiz = await Quiz.findOne({
-      _id: id,
-      isActive: true
+    const quiz = await Quiz.findOne({ 
+      _id: id, 
+      isActive: true 
     });
 
     if (!quiz) {
-      console.log('Quiz not found');
       return res.status(404).json({ message: 'Quiz not found' });
     }
 
-    // Check if student already submitted
-    const existingResult = await Result.findOne({
-      studentId: student._id,
-      quizId: id
-    });
-
-    if (existingResult) {
-      console.log('Student already submitted');
-      return res.status(400).json({ message: 'You have already submitted this quiz' });
-    }
-
-    // Check if quiz is currently active
     const now = new Date();
     const quizStart = new Date(quiz.startDateTime);
     const quizEnd = new Date(quiz.endDateTime);
     const isCurrentlyActive = now >= quizStart && now <= quizEnd;
 
     if (!isCurrentlyActive) {
-      console.log('Quiz not currently active');
-      return res.status(400).json({ message: 'Quiz is not currently active' });
+      return res.status(400).json({ 
+        message: quiz.status === 'scheduled' ? 'Quiz has not started yet' : 'Quiz has ended'
+      });
     }
 
-    // Get questions for the quiz module
+    const existingResult = await Result.findOne({
+      studentId: student._id,
+      quizId: quiz._id
+    });
+
+    if (existingResult) {
+      return res.status(400).json({ 
+        message: 'You have already taken this quiz' 
+      });
+    }
+
     let questions = await Question.find({
       moduleId: quiz.moduleId,
       isActive: true
-    }).select('-answer -createdBy -updatedAt');
+    }).select('questionText type options image tags difficulty');
 
-    console.log(`Found ${questions.length} questions for module ${quiz.moduleId}`);
-
-    // Shuffle questions if enabled
     if (quiz.shuffleQuestions) {
       questions = questions.sort(() => Math.random() - 0.5);
-      console.log('Questions shuffled');
     }
+
+    const sanitizedQuestions = questions.map(q => ({
+      _id: q._id,
+      questionText: q.questionText,
+      type: q.type,
+      options: q.options?.map(opt => ({
+        _id: opt._id,
+        text: opt.text
+      })),
+      image: q.image,
+      tags: q.tags,
+      difficulty: q.difficulty
+    }));
+
+    console.log(`Returning ${sanitizedQuestions.length} questions for quiz`);
 
     res.json({
       success: true,
-      questions,
-      quiz: {
-        _id: quiz._id,
-        title: quiz.title,
-        duration: quiz.duration,
-        endDateTime: quiz.endDateTime
-      }
+      questions: sanitizedQuestions
     });
+
   } catch (error) {
     console.error('Get quiz questions error:', error);
     res.status(500).json({ message: 'Server error', error: error.message });
   }
 };
 
+// FIXED: Submit Quiz with proper duration handling
 export const submitQuiz = async (req, res) => {
   try {
     const { id } = req.params;
     const { answers, timeTaken, startTime } = req.body;
-    
+
     console.log('=== QUIZ SUBMISSION START ===');
     console.log('Quiz ID:', id);
-    console.log('Student ID:', req.user._id);
-    
-    // Validate inputs
-    if (!answers) {
-      console.log('No answers provided');
-      return res.status(400).json({ message: 'No answers provided' });
-    }
+    console.log('Student:', req.user.email);
+    console.log('Answers received:', answers?.length || 0);
+    console.log('Time taken (ms):', timeTaken);
+    console.log('Start time:', startTime);
 
-    let finalAnswers = answers;
+    const quiz = await Quiz.findOne({ 
+      _id: id, 
+      isActive: true 
+    }).populate('moduleId');
 
-    if (!Array.isArray(answers)) {
-      console.log('Answers not in array format, converting...');
-      if (typeof answers === 'object') {
-        finalAnswers = Object.entries(answers).map(([questionId, answer]) => ({
-          questionId,
-          answer
-        }));
-        console.log('Converted answers to array:', finalAnswers);
-      } else {
-        return res.status(400).json({ message: 'Invalid answers format' });
-      }
-    }
-    
-    // Find quiz
-    const quiz = await Quiz.findById(id).populate('moduleId');
     if (!quiz) {
-      console.log('Quiz not found for submission');
       return res.status(404).json({ message: 'Quiz not found' });
     }
-
-    console.log('Quiz found:', quiz.title);
 
     // Check if student already submitted
     const existingResult = await Result.findOne({
       studentId: req.user._id,
-      quizId: id
+      quizId: quiz._id
     });
 
     if (existingResult) {
-      console.log('Student already submitted');
       return res.status(400).json({ message: 'Quiz already submitted' });
     }
 
-    // Get quiz questions with correct answers
+    // Validate submission timing
+    const submissionTime = new Date();
+    const quizStartTime = new Date(quiz.startDateTime);
+    const quizEndTime = new Date(quiz.endDateTime);
+    const studentStartTime = new Date(startTime);
+    
+    console.log('=== TIMING VALIDATION ===');
+    console.log('Quiz start time:', quizStartTime.toISOString());
+    console.log('Quiz end time:', quizEndTime.toISOString());
+    console.log('Student start time:', studentStartTime.toISOString());
+    console.log('Submission time:', submissionTime.toISOString());
+    console.log('Quiz duration (minutes):', quiz.duration);
+
+    // Check if submission is within quiz period
+    if (submissionTime < quizStartTime || submissionTime > quizEndTime) {
+      return res.status(400).json({ 
+        message: 'Quiz submission outside allowed time period' 
+      });
+    }
+
+    // Calculate maximum allowed time for this student
+    const maxDurationMs = quiz.duration * 60 * 1000; // Convert minutes to milliseconds
+    const studentQuizEndTime = new Date(Math.min(
+      studentStartTime.getTime() + maxDurationMs,
+      quizEndTime.getTime()
+    ));
+
+    console.log('Student quiz end time:', studentQuizEndTime.toISOString());
+    console.log('Max duration (ms):', maxDurationMs);
+
+    // Check if student exceeded their allowed time (with 30 second grace period)
+    const graceTimeMs = 30 * 1000; // 30 seconds grace period
+    if (submissionTime.getTime() > studentQuizEndTime.getTime() + graceTimeMs) {
+      console.log('Submission time exceeded allowed duration');
+      return res.status(400).json({ 
+        message: 'Quiz submission time exceeded. Quiz has been auto-submitted.' 
+      });
+    }
+
+    // Calculate actual time taken (more accurate)
+    const actualTimeTaken = submissionTime.getTime() - studentStartTime.getTime();
+    const timeTakenMinutes = Math.round(actualTimeTaken / 60000); // Convert to minutes
+
+    console.log('Actual time taken (ms):', actualTimeTaken);
+    console.log('Time taken (minutes):', timeTakenMinutes);
+
+    // Get questions for grading
     const questions = await Question.find({
-      moduleId: quiz.moduleId._id,
+      moduleId: quiz.moduleId,
       isActive: true
     });
 
-    console.log('Questions found:', questions.length);
-
-    if (questions.length === 0) {
-      console.log('No questions found for module:', quiz.moduleId._id);
-      return res.status(400).json({ message: 'No questions found for this quiz' });
-    }
-
-    // Calculate score
+    const gradedAnswers = [];
     let totalScore = 0;
     let totalMarks = 0;
-    const gradedAnswers = [];
 
-    console.log('=== PROCESSING ANSWERS ===');
+    // Grade each answer
+    for (const answerData of answers) {
+      const question = questions.find(q => q._id.toString() === answerData.questionId);
+      
+      if (!question) {
+        console.log('Question not found for ID:', answerData.questionId);
+        continue;
+      }
 
-    for (const question of questions) {
-      console.log(`\nProcessing question ${question._id}:`);
-      
-      const studentAnswer = finalAnswers.find(a => {
-        const match = a.questionId === question._id.toString();
-        return match;
-      });
-      
-      const maxMarks = question.marks || 1;
+      const maxMarks = 1;
       totalMarks += maxMarks;
 
       let isCorrect = false;
       let marks = 0;
 
-      console.log('Student answer found:', !!studentAnswer);
-      console.log('Student answer content:', studentAnswer?.answer);
-
-      if (studentAnswer && studentAnswer.answer !== undefined && studentAnswer.answer !== null && studentAnswer.answer !== '') {
-        if (question.type === 'MCQ') {
-          const correctOption = question.options?.find(opt => opt.isCorrect);
-          console.log('Correct option:', correctOption?.text);
-          console.log('Student selected:', studentAnswer.answer);
-          
-          if (correctOption && studentAnswer.answer === correctOption.text) {
-            isCorrect = true;
-            marks = maxMarks;
-          }
-        } else if (question.type === 'Structured') {
-          const answerText = String(studentAnswer.answer).trim();
-          if (answerText.length > 0) {
-            marks = Math.round(maxMarks * 0.7); // Give 70% for any attempt
-            isCorrect = marks === maxMarks;
-          }
-        } else if (question.type === 'Essay') {
-          const answerText = String(studentAnswer.answer).trim();
-          if (answerText.length > 50) {
-            marks = Math.round(maxMarks * 0.6); // Give 60% for substantial answer
-            isCorrect = false; // Essays need manual review
-          }
+      // Auto-grade MCQ questions
+      if (question.type === 'MCQ' && question.options) {
+        const correctOption = question.options.find(opt => opt.isCorrect);
+        if (correctOption && answerData.answer === correctOption.text) {
+          isCorrect = true;
+          marks = maxMarks;
+          totalScore += marks;
         }
       }
-
-      totalScore += marks;
-      console.log(`Question score: ${marks}/${maxMarks} (correct: ${isCorrect})`);
+      // For non-MCQ questions, mark as requiring manual grading
+      else if (question.type === 'Structured' || question.type === 'Essay') {
+        // For now, these require manual grading
+        marks = 0; // Will be updated by lecturer
+      }
 
       gradedAnswers.push({
         questionId: question._id,
         questionText: question.questionText,
         questionType: question.type,
-        studentAnswer: studentAnswer?.answer || '',
+        studentAnswer: answerData.answer,
         correctAnswer: question.type === 'MCQ' ? 
           question.options?.find(opt => opt.isCorrect)?.text : 
           question.answer,
@@ -831,11 +848,9 @@ export const submitQuiz = async (req, res) => {
     console.log('Total marks:', totalMarks);
     console.log('Percentage:', percentage);
 
-    // CALCULATE GRADE MANUALLY - FIX FOR THE ERROR
     const grade = calculateGrade(percentage);
     console.log('Calculated grade:', grade);
 
-    // Create result record with grade explicitly set
     const resultData = {
       studentId: req.user._id,
       studentName: `${req.user.firstName} ${req.user.lastName}`,
@@ -849,9 +864,9 @@ export const submitQuiz = async (req, res) => {
       score: totalScore,
       totalMarks,
       percentage,
-      grade: grade, // EXPLICITLY SET GRADE
-      timeTaken: Math.round((timeTaken || 0) / 60000), // Convert milliseconds to minutes
-      startTime: new Date(startTime || new Date()),
+      grade: grade,
+      timeTaken: timeTakenMinutes, // Store in minutes
+      startTime: studentStartTime,
       endTime,
       submissionType: 'normal'
     };
@@ -887,282 +902,212 @@ export const submitQuiz = async (req, res) => {
 };
 
 // ============================
-// ANALYTICS ENDPOINTS - ENHANCED WITH CORRECT ANSWER COUNTS
+// ANALYTICS ENDPOINTS
 // ============================
 
 export const getAnalytics = async (req, res) => {
   try {
     const lecturerId = req.user._id;
-    const { moduleCode, timeRange = '30d' } = req.query;
+    const { moduleCode, timeRange } = req.query;
 
-    console.log('Getting analytics for lecturer:', lecturerId, 'moduleCode:', moduleCode, 'timeRange:', timeRange);
-
-    // Calculate date range
-    const endDate = new Date();
-    const startDate = new Date();
-    if (timeRange === '7d') startDate.setDate(endDate.getDate() - 7);
-    else if (timeRange === '30d') startDate.setDate(endDate.getDate() - 30);
-    else if (timeRange === '90d') startDate.setDate(endDate.getDate() - 90);
-    else startDate.setFullYear(endDate.getFullYear() - 1);
-
-    const matchConditions = {
-      lecturerId,
-      createdAt: { $gte: startDate, $lte: endDate }
-    };
-
-    if (moduleCode && moduleCode !== 'all') {
-      matchConditions.moduleCode = moduleCode;
+    let dateFilter = {};
+    if (timeRange) {
+      const days = parseInt(timeRange.replace('d', ''));
+      dateFilter = {
+        createdAt: { $gte: new Date(Date.now() - days * 24 * 60 * 60 * 1000) }
+      };
     }
 
-    console.log('Analytics match conditions:', matchConditions);
+    let moduleFilter = {};
+    if (moduleCode && moduleCode !== 'all') {
+      moduleFilter.moduleCode = moduleCode;
+    }
 
-    // Overall statistics with correct answer counts
-    const overallStats = await Result.aggregate([
-      { $match: matchConditions },
-      { $unwind: '$answers' }, // Unwind answers array to work with individual answers
-      {
-        $group: {
-          _id: null,
-          totalSubmissions: { $addToSet: '$_id' }, // Count unique submissions
-          totalQuestions: { $sum: 1 }, // Total questions attempted
-          correctAnswers: { $sum: { $cond: ['$answers.isCorrect', 1, 0] } }, // Count correct answers
-          totalMarks: { $sum: '$answers.marks' }, // Sum of all marks earned
-          maxPossibleMarks: { $sum: '$answers.maxMarks' }, // Sum of all possible marks
-          averageScore: { $avg: '$percentage' },
-          highestScore: { $max: '$percentage' },
-          lowestScore: { $min: '$percentage' },
-          totalStudents: { $addToSet: '$studentId' }
-        }
-      },
-      {
-        $project: {
-          totalSubmissions: { $size: '$totalSubmissions' },
-          totalQuestions: 1,
-          correctAnswers: 1,
-          totalMarks: 1,
-          maxPossibleMarks: 1,
-          correctAnswerRate: { 
-            $round: [
-              { $multiply: [{ $divide: ['$correctAnswers', '$totalQuestions'] }, 100] }, 
-              1
-            ] 
-          },
-          averageScore: { $round: ['$averageScore', 1] },
-          highestScore: 1,
-          lowestScore: 1,
-          uniqueStudents: { $size: '$totalStudents' }
-        }
-      }
-    ]);
+    const matchFilter = {
+      lecturerId,
+      ...dateFilter,
+      ...moduleFilter
+    };
 
-    // Module-wise performance with correct answer statistics
-    const modulePerformance = await Result.aggregate([
-      { $match: matchConditions },
-      { $unwind: '$answers' },
-      {
-        $group: {
-          _id: '$moduleCode',
-          averageScore: { $avg: '$percentage' },
-          totalSubmissions: { $addToSet: '$_id' },
-          totalQuestions: { $sum: 1 },
-          correctAnswers: { $sum: { $cond: ['$answers.isCorrect', 1, 0] } },
-          students: { $addToSet: '$studentId' }
+    const [
+      overallStats,
+      modulePerformance,
+      gradeDistribution,
+      recentSubmissions,
+      performanceTrends,
+      topPerformers,
+      questionAnalytics
+    ] = await Promise.all([
+      Result.aggregate([
+        { $match: matchFilter },
+        {
+          $group: {
+            _id: null,
+            totalSubmissions: { $sum: 1 },
+            correctAnswers: { $sum: { $sum: '$answers.isCorrect' } },
+            totalQuestions: { $sum: { $size: '$answers' } },
+            averageScore: { $avg: '$percentage' },
+            highestScore: { $max: '$percentage' },
+            lowestScore: { $min: '$percentage' },
+            uniqueStudents: { $addToSet: '$studentId' }
+          }
+        },
+        {
+          $project: {
+            totalSubmissions: 1,
+            correctAnswers: 1,
+            correctAnswerRate: {
+              $cond: [
+                { $eq: ['$totalQuestions', 0] },
+                0,
+                { $multiply: [{ $divide: ['$correctAnswers', '$totalQuestions'] }, 100] }
+              ]
+            },
+            averageScore: { $round: ['$averageScore', 1] },
+            highestScore: 1,
+            lowestScore: 1,
+            uniqueStudents: { $size: '$uniqueStudents' }
+          }
         }
-      },
-      {
-        $project: {
-          moduleCode: '$_id',
-          averageScore: { $round: ['$averageScore', 1] },
-          totalSubmissions: { $size: '$totalSubmissions' },
-          totalQuestions: 1,
-          correctAnswers: 1,
-          correctAnswerRate: { 
-            $round: [
-              { $multiply: [{ $divide: ['$correctAnswers', '$totalQuestions'] }, 100] }, 
-              1
-            ] 
-          },
-          uniqueStudents: { $size: '$students' },
-          _id: 0
-        }
-      },
-      { $sort: { averageScore: -1 } }
-    ]);
+      ]),
 
-    // Question-wise analytics (most difficult questions)
-    const questionAnalytics = await Result.aggregate([
-      { $match: matchConditions },
-      { $unwind: '$answers' },
-      {
-        $group: {
-          _id: {
-            questionId: '$answers.questionId',
-            questionText: '$answers.questionText',
-            questionType: '$answers.questionType'
-          },
-          totalAttempts: { $sum: 1 },
-          correctCount: { $sum: { $cond: ['$answers.isCorrect', 1, 0] } },
-          averageMarks: { $avg: '$answers.marks' },
-          maxMarks: { $first: '$answers.maxMarks' }
-        }
-      },
-      {
-        $project: {
-          questionText: '$_id.questionText',
-          questionType: '$_id.questionType',
-          totalAttempts: 1,
-          correctCount: 1,
-          incorrectCount: { $subtract: ['$totalAttempts', '$correctCount'] },
-          correctRate: { 
-            $round: [
-              { $multiply: [{ $divide: ['$correctCount', '$totalAttempts'] }, 100] }, 
-              1
-            ] 
-          },
-          averageMarks: { $round: ['$averageMarks', 1] },
-          maxMarks: 1,
-          difficulty: {
-            $switch: {
-              branches: [
-                { 
-                  case: { $gte: [{ $divide: ['$correctCount', '$totalAttempts'] }, 0.8] }, 
-                  then: 'Easy' 
-                },
-                { 
-                  case: { $gte: [{ $divide: ['$correctCount', '$totalAttempts'] }, 0.5] }, 
-                  then: 'Medium' 
-                },
-                { 
-                  case: { $lt: [{ $divide: ['$correctCount', '$totalAttempts'] }, 0.5] }, 
-                  then: 'Hard' 
-                }
-              ],
-              default: 'Unknown'
+      Result.aggregate([
+        { $match: matchFilter },
+        {
+          $group: {
+            _id: '$moduleCode',
+            submissions: { $sum: 1 },
+            averageScore: { $avg: '$percentage' },
+            correctAnswers: { $sum: { $sum: '$answers.isCorrect' } },
+            totalQuestions: { $sum: { $size: '$answers' } }
+          }
+        },
+        {
+          $project: {
+            moduleCode: '$_id',
+            submissions: 1,
+            averageScore: { $round: ['$averageScore', 1] },
+            correctAnswerRate: {
+              $cond: [
+                { $eq: ['$totalQuestions', 0] },
+                0,
+                { $round: [{ $multiply: [{ $divide: ['$correctAnswers', '$totalQuestions'] }, 100] }, 1] }
+              ]
             }
-          },
-          _id: 0
+          }
         }
-      },
-      { $sort: { correctRate: 1 } }, // Sort by difficulty (lowest correct rate first)
-      { $limit: 10 } // Top 10 most difficult questions
+      ]),
+
+      Result.aggregate([
+        { $match: matchFilter },
+        {
+          $group: {
+            _id: '$grade',
+            count: { $sum: 1 }
+          }
+        },
+        {
+          $project: {
+            grade: '$_id',
+            count: 1,
+            _id: 0
+          }
+        }
+      ]),
+
+      Result.find(matchFilter)
+        .select('studentName percentage grade createdAt timeTaken answers')
+        .sort({ createdAt: -1 })
+        .limit(10)
+        .lean(),
+
+      Result.aggregate([
+        { $match: matchFilter },
+        {
+          $group: {
+            _id: { $dateToString: { format: '%Y-%m-%d', date: '$createdAt' } },
+            submissions: { $sum: 1 },
+            averageScore: { $avg: '$percentage' },
+            correctAnswers: { $sum: { $sum: '$answers.isCorrect' } },
+            totalQuestions: { $sum: { $size: '$answers' } }
+          }
+        },
+        {
+          $project: {
+            date: '$_id',
+            submissions: 1,
+            averageScore: { $round: ['$averageScore', 1] },
+            correctAnswerRate: {
+              $cond: [
+                { $eq: ['$totalQuestions', 0] },
+                0,
+                { $round: [{ $multiply: [{ $divide: ['$correctAnswers', '$totalQuestions'] }, 100] }, 1] }
+              ]
+            }
+          }
+        },
+        { $sort: { date: 1 } }
+      ]),
+
+      Result.aggregate([
+        { $match: matchFilter },
+        {
+          $group: {
+            _id: '$studentName',
+            highestScore: { $max: '$percentage' },
+            averageScore: { $avg: '$percentage' },
+            totalSubmissions: { $sum: 1 }
+          }
+        },
+        { $sort: { highestScore: -1 } },
+        { $limit: 10 }
+      ]),
+
+      Result.aggregate([
+        { $match: matchFilter },
+        { $unwind: '$answers' },
+        {
+          $group: {
+            _id: '$answers.questionId',
+            questionText: { $first: '$answers.questionText' },
+            questionType: { $first: '$answers.questionType' },
+            attempts: { $sum: 1 },
+            correctCount: { $sum: { $cond: ['$answers.isCorrect', 1, 0] } }
+          }
+        },
+        {
+          $project: {
+            questionText: 1,
+            questionType: 1,
+            attempts: 1,
+            correctCount: 1,
+            successRate: {
+              $cond: [
+                { $eq: ['$attempts', 0] },
+                0,
+                { $round: [{ $multiply: [{ $divide: ['$correctCount', '$attempts'] }, 100] }, 1] }
+              ]
+            }
+          }
+        },
+        { $sort: { successRate: 1 } },
+        { $limit: 10 }
+      ])
     ]);
 
-    // Grade distribution
-    const gradeDistribution = await Result.aggregate([
-      { $match: matchConditions },
-      {
-        $group: {
-          _id: '$grade',
-          count: { $sum: 1 }
-        }
-      },
-      { $sort: { _id: 1 } }
-    ]);
-
-    // Recent submissions with correct answer details
-    const recentSubmissions = await Result.find(matchConditions)
-      .sort({ createdAt: -1 })
-      .limit(10)
-      .select('studentName quizTitle moduleCode percentage grade createdAt timeTaken answers')
-      .lean();
-
-    // Add correct answer counts to recent submissions
     const enhancedRecentSubmissions = recentSubmissions.map(submission => ({
       ...submission,
       totalQuestions: submission.answers?.length || 0,
       correctAnswers: submission.answers?.filter(ans => ans.isCorrect).length || 0,
-      correctAnswerRate: submission.answers?.length > 0 ? 
-        Math.round((submission.answers.filter(ans => ans.isCorrect).length / submission.answers.length) * 100) : 0,
-      answers: undefined // Remove detailed answers from response for performance
+      correctAnswerRate: submission.answers?.length > 0 ?
+        Math.round((submission.answers.filter(ans => ans.isCorrect).length / submission.answers.length) * 100) : 0
     }));
-
-    // Performance trends (last 7 days) with correct answer tracking
-    const performanceTrends = await Result.aggregate([
-      { $match: matchConditions },
-      { $unwind: '$answers' },
-      {
-        $group: {
-          _id: {
-            date: { $dateToString: { format: '%Y-%m-%d', date: '$createdAt' } }
-          },
-          submissions: { $addToSet: '$_id' },
-          averageScore: { $avg: '$percentage' },
-          totalQuestions: { $sum: 1 },
-          correctAnswers: { $sum: { $cond: ['$answers.isCorrect', 1, 0] } }
-        }
-      },
-      {
-        $project: {
-          date: '$_id.date',
-          submissions: { $size: '$submissions' },
-          averageScore: { $round: ['$averageScore', 1] },
-          totalQuestions: 1,
-          correctAnswers: 1,
-          correctAnswerRate: { 
-            $round: [
-              { $multiply: [{ $divide: ['$correctAnswers', '$totalQuestions'] }, 100] }, 
-              1
-            ] 
-          },
-          _id: 0
-        }
-      },
-      { $sort: { date: 1 } },
-      { $limit: 7 }
-    ]);
-
-    // Top performers with correct answer details
-    const topPerformers = await Result.aggregate([
-      { $match: matchConditions },
-      { $unwind: '$answers' },
-      {
-        $group: {
-          _id: '$studentId',
-          studentName: { $first: '$studentName' },
-          totalSubmissions: { $addToSet: '$_id' },
-          averageScore: { $avg: '$percentage' },
-          bestScore: { $max: '$percentage' },
-          totalQuestions: { $sum: 1 },
-          correctAnswers: { $sum: { $cond: ['$answers.isCorrect', 1, 0] } }
-        }
-      },
-      {
-        $project: {
-          studentName: 1,
-          totalQuizzes: { $size: '$totalSubmissions' },
-          averageScore: { $round: ['$averageScore', 1] },
-          bestScore: 1,
-          totalQuestions: 1,
-          correctAnswers: 1,
-          correctAnswerRate: { 
-            $round: [
-              { $multiply: [{ $divide: ['$correctAnswers', '$totalQuestions'] }, 100] }, 
-              1
-            ] 
-          },
-          _id: 0
-        }
-      },
-      { $sort: { averageScore: -1 } },
-      { $limit: 10 }
-    ]);
-
-    console.log('Analytics query results:', {
-      overallStats: overallStats.length,
-      modulePerformance: modulePerformance.length,
-      gradeDistribution: gradeDistribution.length,
-      recentSubmissions: recentSubmissions.length,
-      performanceTrends: performanceTrends.length,
-      topPerformers: topPerformers.length,
-      questionAnalytics: questionAnalytics.length
-    });
 
     res.json({
       success: true,
       analytics: {
-        overall: {
+        overallStats: {
           totalSubmissions: overallStats[0]?.totalSubmissions || 0,
-          totalQuestions: overallStats[0]?.totalQuestions || 0,
           correctAnswers: overallStats[0]?.correctAnswers || 0,
           correctAnswerRate: overallStats[0]?.correctAnswerRate || 0,
           averageScore: overallStats[0]?.averageScore || 0,
@@ -1200,14 +1145,13 @@ export const getQuizResults = async (req, res) => {
     .select('studentName studentEmail percentage grade timeTaken createdAt submissionType answers')
     .lean();
 
-    // Add correct answer counts to quiz results
     const enhancedResults = results.map(result => ({
       ...result,
       totalQuestions: result.answers?.length || 0,
       correctAnswers: result.answers?.filter(ans => ans.isCorrect).length || 0,
-      correctAnswerRate: result.answers?.length > 0 ? 
+      correctAnswerRate: result.answers?.length > 0 ?
         Math.round((result.answers.filter(ans => ans.isCorrect).length / result.answers.length) * 100) : 0,
-      answers: undefined // Remove detailed answers from response
+      answers: undefined
     }));
 
     console.log(`Found ${results.length} results for quiz ${id}`);
