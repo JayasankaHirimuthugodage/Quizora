@@ -10,6 +10,7 @@ import UsersPage from './pages/admin/UsersPage';
 import LecturerDashboard from './pages/lecturer/LecturerDashboard';
 import QuestionManagement from './pages/lecturer/QuestionManagement';
 import QuizManagement from './pages/lecturer/QuizManagement';
+import AnalyticsPage from './pages/lecturer/AnalyticsPage';
 import StudentDashboard from './pages/student/StudentDashboard';
 import QuizPage from './pages/student/QuizPage';
 
@@ -53,6 +54,7 @@ function App() {
                       <Route path="dashboard" element={<LecturerDashboard />} />
                       <Route path="questions" element={<QuestionManagement />} />
                       <Route path="quizzes" element={<QuizManagement />} />
+                      <Route path="analytics" element={<AnalyticsPage />} />
                       <Route path="" element={<Navigate to="dashboard" replace />} />
                     </Routes>
                   </Layout>
