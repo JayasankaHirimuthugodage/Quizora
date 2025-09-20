@@ -1075,12 +1075,31 @@ export const getAnalytics = async (req, res) => {
             correctCount: { $sum: { $cond: ['$answers.isCorrect', 1, 0] } }
           }
         },
+        // Add lookup to verify question still exists and belongs to current user
+        {
+          $lookup: {
+            from: 'questions',
+            localField: '_id',
+            foreignField: '_id',
+            as: 'questionDetails'
+          }
+        },
+        // Only include questions that still exist, are active, and belong to current user
+        {
+          $match: {
+            'questionDetails.isActive': true,
+            'questionDetails.createdBy': lecturerId  // Use the lecturerId from the analytics filter
+          }
+        },
         {
           $project: {
+            questionId: '$_id', // Include the questionId for deletion
             questionText: 1,
             questionType: 1,
             attempts: 1,
             correctCount: 1,
+            difficulty: { $arrayElemAt: ['$questionDetails.difficulty', 0] }, // Get difficulty from question details
+            canDelete: true, // Flag indicating this question can be deleted
             successRate: {
               $cond: [
                 { $eq: ['$attempts', 0] },
