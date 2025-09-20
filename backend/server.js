@@ -8,8 +8,10 @@ import authRoutes from './routes/authRoutes.js';
 import userRoutes from './routes/userRoutes.js';
 import questionRoutes from './routes/questionRoutes.js';
 import moduleRoutes from './routes/moduleRoutes.js';
-import quizRoutes from './routes/quizRoutes.js'; // Add this import
+import quizRoutes from './routes/quizRoutes.js';
 import User from './models/User.js';
+import Quiz from './models/Quiz.js';
+import Result from './models/Result.js';
 import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
 import path from 'path';
@@ -101,7 +103,7 @@ app.use('/api/auth', authLimiter, authRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/questions', questionRoutes);
 app.use('/api/modules', moduleRoutes);
-app.use('/api/quizzes', quizRoutes); // Add this line
+app.use('/api/quizzes', quizRoutes);
 
 // Health check
 app.get('/api/health', (req, res) => {
@@ -168,37 +170,7 @@ app.use((err, req, res, next) => {
   });
 });
 
-// Graceful shutdown
-process.on('SIGINT', async () => {
-  console.log('Shutting down gracefully...');
-  try {
-    await mongoose.connection.close();
-    console.log('MongoDB connection closed');
-    process.exit(0);
-  } catch (error) {
-    console.error('Error during shutdown:', error);
-    process.exit(1);
-  }
-});
-
-process.on('SIGTERM', async () => {
-  console.log('SIGTERM received, shutting down gracefully...');
-  try {
-    await mongoose.connection.close();
-    console.log('MongoDB connection closed');
-    process.exit(0);
-  } catch (error) {
-    console.error('Error during shutdown:', error);
-    process.exit(1);
-  }
-});
-
 const PORT = process.env.PORT || 5001;
-
 app.listen(PORT, () => {
-  console.log(`Server is running on port ${PORT}`);
-  console.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
-  console.log(`API Base URL: http://localhost:${PORT}/api`);
+  console.log(`Server running on port ${PORT}`);
 });
-
-export default app;
