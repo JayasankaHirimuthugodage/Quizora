@@ -1,5 +1,3 @@
-// backend\routes\quizRoutes.js
-
 import { Router } from 'express';
 import { authenticate, authorize } from '../middleware/auth.js';
 import * as quizController from '../controllers/quizController.js';
@@ -8,6 +6,10 @@ const router = Router();
 
 // All routes require authentication
 router.use(authenticate);
+
+// DEBUG ROUTES - TEMPORARY (Remove in production)
+router.get('/:id/debug-data', quizController.debugQuizData);
+router.get('/test-grade', quizController.testGradeCalculation);
 
 // Lecturer routes
 router.get('/', 
@@ -25,6 +27,11 @@ router.get('/stats',
   quizController.getQuizStats
 );
 
+router.get('/analytics', 
+  authorize('lecturer'), 
+  quizController.getAnalytics
+);
+
 router.get('/:id', 
   authorize('lecturer'), 
   quizController.getQuizById
@@ -34,6 +41,11 @@ router.get('/:id',
 router.get('/:id/editability', 
   authorize('lecturer'), 
   quizController.getQuizEditability
+);
+
+router.get('/:id/results', 
+  authorize('lecturer'), 
+  quizController.getQuizResults
 );
 
 router.put('/:id', 
@@ -60,6 +72,11 @@ router.post('/:id/verify-passcode',
 router.get('/:id/questions', 
   authorize('student'), 
   quizController.getQuizQuestions
+);
+
+router.post('/:id/submit', 
+  authorize('student'), 
+  quizController.submitQuiz
 );
 
 export default router;
