@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react';
 import { quizService } from '../../services/quizService';
 import { moduleService } from '../../services/moduleService';
-import { BarChart3, Users, TrendingUp, Award, CheckCircle, XCircle, Target, Filter, Eye } from 'lucide-react';
+import { questionService } from '../../services/questionService';
+import { BarChart3, Users, TrendingUp, Award, CheckCircle, XCircle, Target, Filter, Eye, Trash2 } from 'lucide-react';
 
 const AnalyticsPage = () => {
   const [analytics, setAnalytics] = useState(null);
@@ -30,8 +31,10 @@ const AnalyticsPage = () => {
   const fetchAnalytics = async () => {
     try {
       setLoading(true);
-      const response = await quizService.getAnalytics(filters);
-      setAnalytics(response.analytics);
+const response = await quizService.getAnalytics(filters);
+console.log('Analytics response:', response.analytics);
+console.log('Question analytics:', response.analytics?.questionAnalytics);
+setAnalytics(response.analytics);
     } catch (err) {
       setError(err.message);
     } finally {
@@ -75,6 +78,32 @@ const AnalyticsPage = () => {
     });
   };
 
+const handleDeleteQuestion = async (questionId, questionText) => {
+  // Show confirmation dialog
+  const confirmed = window.confirm(
+    `Are you sure you want to delete this question?\n\n"${questionText.substring(0, 100)}${questionText.length > 100 ? '...' : ''}"\n\nThis action cannot be undone.`
+  );
+
+  if (!confirmed) return;
+
+  try {
+    setLoading(true);
+    console.log('Deleting question with ID:', questionId);
+    
+    await questionService.deleteQuestion(questionId);
+    
+    // Show success message
+    alert('Question deleted successfully');
+    
+    // Refresh analytics data to update the challenging questions list
+    await fetchAnalytics();
+  } catch (error) {
+    console.error('Error deleting question:', error);
+    alert(`Failed to delete question: ${error.message}`);
+  } finally {
+    setLoading(false);
+  }
+};
   if (loading) {
     return (
       <div className="flex justify-center items-center h-64">
@@ -300,45 +329,68 @@ const AnalyticsPage = () => {
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Success Rate
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Difficulty
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="bg-white divide-y divide-gray-200">
-                {analytics.questionAnalytics.map((question, index) => (
-                  <tr key={index}>
-                    <td className="px-6 py-4 text-sm text-gray-900 max-w-xs truncate">
-                      {question.questionText}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <span className="px-2 py-1 text-xs font-medium rounded-full bg-blue-100 text-blue-800">
-                        {question.questionType}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                      {question.totalAttempts}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                      {question.correctCount}/{question.totalAttempts}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                      <span className={`px-2 py-1 text-xs font-medium rounded-full ${
-                        question.correctRate >= 80 ? 'bg-green-100 text-green-800' :
-                        question.correctRate >= 50 ? 'bg-yellow-100 text-yellow-800' :
-                        'bg-red-100 text-red-800'
-                      }`}>
-                        {question.correctRate}%
-                      </span>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <span className={`px-2 py-1 text-xs font-medium rounded-full ${getDifficultyColor(question.difficulty)}`}>
-                        {question.difficulty}
-                      </span>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
+    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+      Difficulty
+    </th>
+  </tr>
+</thead>
+<tbody className="bg-white divide-y divide-gray-200">
+  {analytics.questionAnalytics.map((question, index) => {
+    // Handle both possible field names for question ID
+    const questionId = question.questionId || question._id;
+    return (
+      <tr key={index}>
+        <td className="px-6 py-4 text-sm text-gray-900 max-w-xs truncate">
+          {question.questionText}
+        </td>
+        <td className="px-6 py-4 whitespace-nowrap">
+          <span className="px-2 py-1 text-xs font-medium rounded-full bg-blue-100 text-blue-800">
+            {question.questionType}
+          </span>
+        </td>
+        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+          {question.totalAttempts}
+        </td>
+        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+          {question.correctCount}/{question.attempts}
+        </td>
+        <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
+          <span className={`px-2 py-1 text-xs font-medium rounded-full ${
+            question.successRate >= 80 ? 'bg-green-100 text-green-800' :
+            question.successRate >= 50 ? 'bg-yellow-100 text-yellow-800' :
+            'bg-red-100 text-red-800'
+          }`}>
+            {question.successRate}%
+          </span>
+        </td>
+        <td className="px-6 py-4 whitespace-nowrap">
+          <span className={`px-2 py-1 text-xs font-medium rounded-full ${getDifficultyColor(question.difficulty)}`}>
+            {question.difficulty || 'N/A'}
+          </span>
+        </td>
+        <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+          {questionId && question.canDelete ? (
+            <button
+              onClick={() => handleDeleteQuestion(questionId, question.questionText)}
+              className="text-red-600 hover:text-red-900 hover:bg-red-50 p-1 rounded-full transition-colors duration-200"
+              title={`Delete Question (ID: ${questionId})`}
+            >
+              <Trash2 size={16} />
+            </button>
+          ) : questionId ? (
+            <span className="text-gray-400" title="Question cannot be deleted (not owned by you or already deleted)">
+              <Trash2 size={16} />
+            </span>
+          ) : (
+            <span className="text-gray-400" title="Question ID not available">
+              <Trash2 size={16} />
+            </span>
+          )}
+        </td>
+      </tr>
+    );
+  })}
+</tbody>
             </table>
           </div>
         </div>

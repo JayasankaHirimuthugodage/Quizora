@@ -80,20 +80,20 @@ const quizSchema = new mongoose.Schema({
     type: Boolean,
     default: false
   },
-  maxAttempts: {
-    type: Number,
-    default: 1,
-    min: 1
-  },
-  questionCount: {
-    type: Number,
-    default: 0
-  },
-  status: {
-    type: String,
-    enum: ['scheduled', 'active', 'completed', 'cancelled'],
-    default: 'scheduled'
-  },
+maxAttempts: {
+  type: Number,
+  default: 1,
+  min: 1
+},
+questionCount: {
+  type: Number,
+  default: 0
+},
+status: {
+  type: String,
+  enum: ['scheduled', 'active', 'completed', 'cancelled'],
+  default: 'scheduled'
+},
   createdBy: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User',
@@ -112,7 +112,7 @@ quizSchema.index({ createdBy: 1, createdAt: -1 });
 quizSchema.index({ moduleCode: 1, startDateTime: 1 });
 quizSchema.index({ status: 1, startDateTime: 1 });
 
-// FIXED: Improved status update logic - only for new quizzes
+// Improved status update logic - only for new quizzes
 quizSchema.pre('save', function(next) {
   // Only auto-update status for new documents
   if (!this.isNew) {
@@ -123,13 +123,6 @@ quizSchema.pre('save', function(next) {
   const startTime = new Date(this.startDateTime);
   const endTime = new Date(this.endDateTime);
 
-  console.log(`New Quiz ${this.title} - Setting initial status:`, {
-    now: now.toISOString(),
-    startTime: startTime.toISOString(),
-    endTime: endTime.toISOString()
-  });
-
-  // Set initial status for new quizzes
   if (now < startTime) {
     this.status = 'scheduled';
   } else if (now >= startTime && now <= endTime) {
@@ -138,7 +131,6 @@ quizSchema.pre('save', function(next) {
     this.status = 'completed';
   }
 
-  console.log(`New Quiz ${this.title} - Initial status set to: ${this.status}`);
   next();
 });
 
@@ -163,7 +155,6 @@ quizSchema.methods.updateStatus = function() {
   }
 
   if (newStatus !== this.status) {
-    console.log(`Quiz ${this._id}: Status changing from ${this.status} to ${newStatus}`);
     this.status = newStatus;
   }
 
@@ -174,7 +165,6 @@ quizSchema.methods.updateStatus = function() {
 quizSchema.statics.updateAllStatuses = async function() {
   try {
     const now = new Date();
-    console.log('Bulk updating quiz statuses at:', now.toISOString());
 
     // Update scheduled quizzes that should now be active
     const activatedQuizzes = await this.updateMany(
@@ -197,19 +187,11 @@ quizSchema.statics.updateAllStatuses = async function() {
       { status: 'completed' }
     );
 
-    if (activatedQuizzes.modifiedCount > 0 || completedQuizzes.modifiedCount > 0) {
-      console.log(`Quiz status bulk update completed:`, {
-        activatedCount: activatedQuizzes.modifiedCount,
-        completedCount: completedQuizzes.modifiedCount
-      });
-    }
-
     return {
       activated: activatedQuizzes.modifiedCount,
       completed: completedQuizzes.modifiedCount
     };
   } catch (error) {
-    console.error('Error in bulk quiz status update:', error);
     throw error;
   }
 };
