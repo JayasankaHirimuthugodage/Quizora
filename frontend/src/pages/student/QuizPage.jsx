@@ -5,7 +5,7 @@ import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { quizService } from '../../services/quizService';
 import QuizInstructions from '../../components/student/QuizInstructions';
 import QuizInterface from '../../components/student/QuizInterface';
-import { AlertCircle } from 'lucide-react';
+import { AlertCircle, CheckCircle, Trophy } from 'lucide-react';
 
 const QuizPage = () => {
   const { id } = useParams();
@@ -16,6 +16,7 @@ const QuizPage = () => {
   const [questions, setQuestions] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [quizResult, setQuizResult] = useState(null);
 
   useEffect(() => {
     initializeQuiz();
@@ -73,14 +74,20 @@ const QuizPage = () => {
   const handleSubmitQuiz = async (submissionData) => {
     try {
       setLoading(true);
-      // TODO: Implement quiz submission to backend
-      console.log('Quiz submitted:', submissionData);
       
+      const response = await quizService.submitQuiz(id, {
+        answers: submissionData.answers,
+        timeTaken: submissionData.timeTaken,
+        startTime: submissionData.startTime
+      });
+
+      // Store result for display
+      setQuizResult(response.result);
       setCurrentStep('completed');
       
       setTimeout(() => {
         navigate('/student/dashboard');
-      }, 3000);
+      }, 5000);
     } catch (err) {
       setError(err.message);
     } finally {
@@ -94,7 +101,7 @@ const QuizPage = () => {
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
-          <p className="text-gray-600">Initializing quiz...</p>
+          <p className="text-gray-600">Loading quiz...</p>
         </div>
       </div>
     );
@@ -103,10 +110,10 @@ const QuizPage = () => {
   // Error state
   if (error) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
-        <div className="bg-white rounded-lg shadow-lg p-8 max-w-md w-full text-center">
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center max-w-md mx-auto p-6">
           <AlertCircle className="w-16 h-16 text-red-500 mx-auto mb-4" />
-          <h2 className="text-xl font-semibold text-gray-900 mb-2">Unable to Load Quiz</h2>
+          <h2 className="text-2xl font-bold text-gray-900 mb-2">Error</h2>
           <p className="text-gray-600 mb-6">{error}</p>
           <button
             onClick={() => navigate('/student/dashboard')}
@@ -119,19 +126,46 @@ const QuizPage = () => {
     );
   }
 
-  // Completed state
+  // Completion state
   if (currentStep === 'completed') {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
-        <div className="bg-white rounded-lg shadow-lg p-8 max-w-md w-full text-center">
-          <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
-            <svg className="w-8 h-8 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-            </svg>
-          </div>
-          <h2 className="text-xl font-semibold text-gray-900 mb-2">Quiz Submitted Successfully!</h2>
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center max-w-md mx-auto p-6 bg-white rounded-xl shadow-lg">
+          <CheckCircle className="w-16 h-16 text-green-500 mx-auto mb-4" />
+          <h2 className="text-2xl font-bold text-gray-900 mb-2">Quiz Completed!</h2>
+          
+          {quizResult && (
+            <div className="bg-gray-50 rounded-lg p-4 mb-6">
+              <div className="flex items-center justify-center mb-3">
+                <Trophy className="w-8 h-8 text-yellow-500 mr-2" />
+                <span className="text-2xl font-bold text-gray-900">
+                  Grade: {quizResult.grade}
+                </span>
+              </div>
+              <div className="grid grid-cols-2 gap-4 text-sm">
+                <div>
+                  <p className="text-gray-600">Score</p>
+                  <p className="font-semibold">{quizResult.score}/{quizResult.totalMarks}</p>
+                </div>
+                <div>
+                  <p className="text-gray-600">Percentage</p>
+                  <p className="font-semibold">{quizResult.percentage}%</p>
+                </div>
+                <div>
+                  <p className="text-gray-600">Time Taken</p>
+                  <p className="font-semibold">{quizResult.timeTaken} min</p>
+                </div>
+                <div>
+                  <p className="text-gray-600">Status</p>
+                  <p className="font-semibold text-green-600">Submitted</p>
+                </div>
+              </div>
+            </div>
+          )}
+
           <p className="text-gray-600 mb-6">
-            Your answers have been recorded. You will be redirected to your dashboard shortly.
+            Your quiz has been submitted successfully. 
+            You will be redirected to your dashboard shortly.
           </p>
           <button
             onClick={() => navigate('/student/dashboard')}
@@ -176,4 +210,5 @@ const QuizPage = () => {
     </div>
   );
 };
+
 export default QuizPage;
