@@ -1,11 +1,10 @@
-// frontend\src\services\quizService.js
+// frontend/src/services/quizService.js
 
 import api from './api';
 
 export const quizService = {
-  // Lecturer endpoints
   getQuizzes: async (params = {}) => {
-    const response = await api.get('/quizzes', params);
+    const response = await api.get('/quizzes', { params });
     return response;
   },
 
@@ -39,6 +38,16 @@ export const quizService = {
     return response;
   },
 
+  getAnalytics: async (params = {}) => {
+    const response = await api.get('/quizzes/analytics', { params });
+    return response;
+  },
+
+  getQuizResults: async (id) => {
+    const response = await api.get(`/quizzes/${id}/results`);
+    return response;
+  },
+
   // Student endpoints
   getStudentQuizzes: async () => {
     const response = await api.get('/quizzes/student/available');
@@ -52,6 +61,28 @@ export const quizService = {
 
   getQuizQuestions: async (quizId) => {
     const response = await api.get(`/quizzes/${quizId}/questions`);
+    return response;
+  },
+
+  submitQuiz: async (quizId, submissionData) => {
+    const response = await api.post(`/quizzes/${quizId}/submit`, submissionData);
+    return response;
+  },
+
+  // Manual status update endpoint (NEW)
+  updateQuizStatuses: async () => {
+    const response = await api.post('/quizzes/update-statuses');
+    return response;
+  },
+
+  // Debug endpoints (temporary)
+  debugQuizData: async (quizId) => {
+    const response = await api.get(`/quizzes/${quizId}/debug-data`);
+    return response;
+  },
+
+  testGradeCalculation: async () => {
+    const response = await api.get('/quizzes/test-grade');
     return response;
   }
 };
